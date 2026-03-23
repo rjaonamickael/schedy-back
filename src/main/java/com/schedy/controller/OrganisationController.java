@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.OrganisationDto;
-import com.schedy.entity.Organisation;
+import com.schedy.dto.response.OrganisationResponse;
 import com.schedy.service.OrganisationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/organisations")
+@RequestMapping("/api/v1/organisations")
 @RequiredArgsConstructor
 public class OrganisationController {
 
@@ -21,25 +21,26 @@ public class OrganisationController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<Organisation>> getAll() {
-        return ResponseEntity.ok(organisationService.findAll());
+    public ResponseEntity<List<OrganisationResponse>> getAll() {
+        return ResponseEntity.ok(organisationService.findAll().stream().map(OrganisationResponse::from).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Organisation> getById(@PathVariable String id) {
-        return ResponseEntity.ok(organisationService.findById(id));
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<OrganisationResponse> getById(@PathVariable String id) {
+        return ResponseEntity.ok(OrganisationResponse.from(organisationService.findById(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Organisation> create(@Valid @RequestBody OrganisationDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(organisationService.create(dto));
+    public ResponseEntity<OrganisationResponse> create(@Valid @RequestBody OrganisationDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(OrganisationResponse.from(organisationService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Organisation> update(@PathVariable String id, @Valid @RequestBody OrganisationDto dto) {
-        return ResponseEntity.ok(organisationService.update(id, dto));
+    public ResponseEntity<OrganisationResponse> update(@PathVariable String id, @Valid @RequestBody OrganisationDto dto) {
+        return ResponseEntity.ok(OrganisationResponse.from(organisationService.update(id, dto)));
     }
 
     @DeleteMapping("/{id}")

@@ -32,19 +32,30 @@ public class SecurityConfig {
         http
                 .cors(cors -> {})
                 .csrf(AbstractHttpConfigurer::disable)
-                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
+                .headers(headers -> headers
+                        .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000))
+                        .contentSecurityPolicy(csp -> csp
+                                .policyDirectives("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'"))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicy(permissions -> permissions
+                                .policy("camera=(), microphone=(), geolocation=()"))
+                )
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/pointage-codes/kiosk/**").permitAll()
-                        .requestMatchers("/api/pointage-codes/validate").permitAll()
+                    auth.requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/pointage-codes/kiosk/**").permitAll()
+                        .requestMatchers("/api/v1/pointage-codes/validate").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    // H2 console only in dev profile
+                    // Dev-only: Swagger UI + H2 console
                     for (String profile : environment.getActiveProfiles()) {
                         if ("dev".equals(profile)) {
+                            auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
                             auth.requestMatchers("/h2-console/**").permitAll();
                             break;
                         }

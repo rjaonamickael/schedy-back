@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.SiteDto;
-import com.schedy.entity.Site;
+import com.schedy.dto.response.SiteResponse;
 import com.schedy.service.SiteService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,37 +15,37 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/sites")
+@RequestMapping("/api/v1/sites")
 @RequiredArgsConstructor
 public class SiteController {
 
     private final SiteService siteService;
 
     @GetMapping
-    public ResponseEntity<Page<Site>> getAll(Pageable pageable) {
-        return ResponseEntity.ok(siteService.findAll(pageable));
+    public ResponseEntity<Page<SiteResponse>> getAll(Pageable pageable) {
+        return ResponseEntity.ok(siteService.findAll(pageable).map(SiteResponse::from));
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<Site>> getAllActifs() {
-        return ResponseEntity.ok(siteService.findAllActifs());
+    public ResponseEntity<List<SiteResponse>> getAllActifs() {
+        return ResponseEntity.ok(siteService.findAllActifs().stream().map(SiteResponse::from).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Site> getById(@PathVariable String id) {
-        return ResponseEntity.ok(siteService.findById(id));
+    public ResponseEntity<SiteResponse> getById(@PathVariable String id) {
+        return ResponseEntity.ok(SiteResponse.from(siteService.findById(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Site> create(@Valid @RequestBody SiteDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(siteService.create(dto));
+    public ResponseEntity<SiteResponse> create(@Valid @RequestBody SiteDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(SiteResponse.from(siteService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Site> update(@PathVariable String id, @Valid @RequestBody SiteDto dto) {
-        return ResponseEntity.ok(siteService.update(id, dto));
+    public ResponseEntity<SiteResponse> update(@PathVariable String id, @Valid @RequestBody SiteDto dto) {
+        return ResponseEntity.ok(SiteResponse.from(siteService.update(id, dto)));
     }
 
     @DeleteMapping("/{id}")

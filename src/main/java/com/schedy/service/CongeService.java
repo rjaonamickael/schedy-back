@@ -52,14 +52,14 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         TypeConge type = TypeConge.builder()
                 .nom(dto.nom())
-                .categorie(dto.categorie())
-                .unite(dto.unite())
+                .categorie(CategorieConge.valueOf(dto.categorie()))
+                .unite(UniteConge.valueOf(dto.unite()))
                 .couleur(dto.couleur())
                 .modeQuota(dto.modeQuota())
                 .quotaIllimite(dto.quotaIllimite())
                 .autoriserNegatif(dto.autoriserNegatif())
                 .accrualMontant(dto.accrualMontant())
-                .accrualFrequence(dto.accrualFrequence())
+                .accrualFrequence(dto.accrualFrequence() != null ? FrequenceAccrual.valueOf(dto.accrualFrequence()) : null)
                 .reportMax(dto.reportMax())
                 .reportDuree(dto.reportDuree())
                 .organisationId(orgId)
@@ -73,14 +73,14 @@ public class CongeService {
         TypeConge type = typeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Type de conge", id));
         type.setNom(dto.nom());
-        type.setCategorie(dto.categorie());
-        type.setUnite(dto.unite());
+        type.setCategorie(CategorieConge.valueOf(dto.categorie()));
+        type.setUnite(UniteConge.valueOf(dto.unite()));
         type.setCouleur(dto.couleur());
         type.setModeQuota(dto.modeQuota());
         type.setQuotaIllimite(dto.quotaIllimite());
         type.setAutoriserNegatif(dto.autoriserNegatif());
         type.setAccrualMontant(dto.accrualMontant());
-        type.setAccrualFrequence(dto.accrualFrequence());
+        type.setAccrualFrequence(dto.accrualFrequence() != null ? FrequenceAccrual.valueOf(dto.accrualFrequence()) : null);
         type.setReportMax(dto.reportMax());
         type.setReportDuree(dto.reportDuree());
         return typeCongeRepository.save(type);
@@ -92,22 +92,16 @@ public class CongeService {
         TypeConge type = typeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Type de conge", id));
 
-        // Check for approved demandes — block deletion if any exist
-        List<DemandeConge> approvedDemandes = demandeCongeRepository.findByOrganisationId(orgId).stream()
-                .filter(d -> id.equals(d.getTypeCongeId()) && "approuve".equals(d.getStatut()))
-                .toList();
+        // Block deletion if approved demandes exist (direct DB query, no in-memory filtering)
+        List<DemandeConge> approvedDemandes = demandeCongeRepository
+                .findByTypeCongeIdAndStatutAndOrganisationId(id, StatutDemande.approuve, orgId);
         if (!approvedDemandes.isEmpty()) {
             throw new BusinessRuleException("Impossible de supprimer ce type: " + approvedDemandes.size() + " demande(s) approuvee(s) existent");
         }
 
-        // Clean up related banques and pending/refused demandes
-        banqueCongeRepository.findByOrganisationId(orgId).stream()
-                .filter(b -> id.equals(b.getTypeCongeId()))
-                .forEach(banqueCongeRepository::delete);
-        demandeCongeRepository.findByOrganisationId(orgId).stream()
-                .filter(d -> id.equals(d.getTypeCongeId()))
-                .forEach(demandeCongeRepository::delete);
-
+        // Cascade cleanup via direct DB queries (no in-memory loading)
+        demandeCongeRepository.deleteByTypeCongeIdAndOrganisationId(id, orgId);
+        banqueCongeRepository.deleteByTypeCongeIdAndOrganisationId(id, orgId);
         typeCongeRepository.delete(type);
     }
 
@@ -215,7 +209,7 @@ public class CongeService {
                 .heureDebut(dto.heureDebut())
                 .heureFin(dto.heureFin())
                 .duree(dto.duree())
-                .statut("en_attente")
+                .statut(StatutDemande.en_attente)
                 .motif(dto.motif())
                 .organisationId(orgId)
                 .build();
@@ -255,11 +249,11 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
-        if (!"en_attente".equals(demande.getStatut())) {
+        if (demande.getStatut() != StatutDemande.en_attente) {
             throw new BusinessRuleException("Seules les demandes en attente peuvent etre approuvees");
         }
 
-        demande.setStatut("approuve");
+        demande.setStatut(StatutDemande.approuve);
         demande.setNoteApprobation(note);
         log.info("Leave request {} approved", id);
         demandeCongeRepository.save(demande);
@@ -280,11 +274,11 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
-        if (!"en_attente".equals(demande.getStatut())) {
+        if (demande.getStatut() != StatutDemande.en_attente) {
             throw new BusinessRuleException("Seules les demandes en attente peuvent etre refusees");
         }
 
-        demande.setStatut("refuse");
+        demande.setStatut(StatutDemande.refuse);
         demande.setNoteApprobation(note);
         log.info("Leave request {} refused", id);
         demandeCongeRepository.save(demande);
@@ -303,7 +297,7 @@ public class CongeService {
     public DemandeConge updateDemande(String id, DemandeCongeDto dto) {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
-                .orElseThrow(() -> new ResourceNotFoundException("Demande de congé", id));
+                .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
         demande.setTypeCongeId(dto.typeCongeId());
         demande.setDateDebut(dto.dateDebut());
         demande.setDateFin(dto.dateFin());
@@ -320,7 +314,7 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
-        if ("en_attente".equals(demande.getStatut())) {
+        if (demande.getStatut() == StatutDemande.en_attente) {
             // Rollback enAttente if deleting a pending request
             banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
                     .ifPresent(banque -> {

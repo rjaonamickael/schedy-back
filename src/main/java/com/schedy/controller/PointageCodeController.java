@@ -3,7 +3,7 @@ package com.schedy.controller;
 import com.schedy.dto.PointageCodeDto;
 import com.schedy.dto.request.PointageCodeConfigRequest;
 import com.schedy.dto.request.ValidatePointageCodeRequest;
-import com.schedy.entity.Pointage;
+import com.schedy.dto.response.PointageResponse;
 import com.schedy.entity.PointageCode.FrequenceRotation;
 import com.schedy.dto.request.PointerRequest;
 import com.schedy.service.PointageCodeService;
@@ -16,7 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/pointage-codes")
+@RequestMapping("/api/v1/pointage-codes")
 @RequiredArgsConstructor
 public class PointageCodeController {
 
@@ -70,7 +70,7 @@ public class PointageCodeController {
      * The organisationId is resolved from the PointageCode.
      */
     @PostMapping("/validate")
-    public ResponseEntity<Pointage> validate(@Valid @RequestBody ValidatePointageCodeRequest request) {
+    public ResponseEntity<PointageResponse> validate(@Valid @RequestBody ValidatePointageCodeRequest request) {
         // 1. Resolve organisationId from the code before validating
         String organisationId = pointageCodeService.resolveOrganisationIdFromCode(request.code());
 
@@ -79,7 +79,7 @@ public class PointageCodeController {
 
         // 3. Create a pointage for the employee at the resolved site
         PointerRequest pointerRequest = new PointerRequest(request.employeId(), siteId, "qr");
-        Pointage pointage = pointageService.pointerFromKiosk(pointerRequest, organisationId);
+        PointageResponse pointage = PointageResponse.from(pointageService.pointerFromKiosk(pointerRequest, organisationId));
 
         return ResponseEntity.status(HttpStatus.CREATED).body(pointage);
     }

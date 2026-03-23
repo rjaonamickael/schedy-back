@@ -14,7 +14,6 @@ import java.util.Optional;
 @Repository
 public interface EmployeRepository extends JpaRepository<Employe, String> {
     List<Employe> findByRole(String role);
-    Optional<Employe> findByPin(String pin);
     List<Employe> findByOrganisationId(String organisationId);
 
     // Multi-site queries
@@ -35,5 +34,5 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
     Page<Employe> findBySiteIdsContainingAndOrganisationId(@Param("siteId") String siteId, @Param("organisationId") String organisationId, Pageable pageable);
 
     List<Employe> findByRoleAndOrganisationId(String role, String organisationId);
-    Optional<Employe> findByPinAndOrganisationId(String pin, String organisationId);
+    Optional<Employe> findByPinHashAndOrganisationId(String pinHash, String organisationId);
 }

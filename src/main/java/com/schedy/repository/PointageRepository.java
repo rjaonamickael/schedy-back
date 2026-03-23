@@ -1,6 +1,7 @@
 package com.schedy.repository;
 
 import com.schedy.entity.Pointage;
+import com.schedy.entity.StatutPointage;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,13 +20,13 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     List<Pointage> findByHorodatageBetweenOrderByHorodatageDesc(
             LocalDateTime start, LocalDateTime end);
     Optional<Pointage> findTopByEmployeIdOrderByHorodatageDesc(String employeId);
-    List<Pointage> findByStatut(String statut);
+    List<Pointage> findByStatut(StatutPointage statut);
 
     // Multi-site queries
     List<Pointage> findBySiteId(String siteId);
     List<Pointage> findByEmployeIdAndSiteId(String employeId, String siteId);
     Page<Pointage> findBySiteId(String siteId, Pageable pageable);
-    List<Pointage> findByStatutAndSiteId(String statut, String siteId);
+    List<Pointage> findByStatutAndSiteId(StatutPointage statut, String siteId);
     List<Pointage> findBySiteIdAndHorodatageBetweenOrderByHorodatageDesc(
             String siteId, LocalDateTime start, LocalDateTime end);
     Optional<Pointage> findTopByEmployeIdAndSiteIdOrderByHorodatageDesc(String employeId, String siteId);
@@ -39,8 +40,8 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     List<Pointage> findByEmployeIdAndSiteIdAndOrganisationId(String employeId, String siteId, String organisationId);
     List<Pointage> findByOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String organisationId, LocalDateTime start, LocalDateTime end);
     List<Pointage> findBySiteIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String siteId, String organisationId, LocalDateTime start, LocalDateTime end);
-    List<Pointage> findByStatutAndOrganisationId(String statut, String organisationId);
-    List<Pointage> findByStatutAndSiteIdAndOrganisationId(String statut, String siteId, String organisationId);
+    List<Pointage> findByStatutAndOrganisationId(StatutPointage statut, String organisationId);
+    List<Pointage> findByStatutAndSiteIdAndOrganisationId(StatutPointage statut, String siteId, String organisationId);
     Optional<Pointage> findTopByEmployeIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String organisationId);
     Optional<Pointage> findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String siteId, String organisationId);
     List<Pointage> findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String employeId, String organisationId, LocalDateTime start, LocalDateTime end);

@@ -13,7 +13,7 @@ spring:
       write-dates-as-timestamps: false
 
 jwt:
-  secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWtleS1mb3Itand0LXRva2VuLWdlbmVyYXRpb24tbXVzdC1iZS1hdC1sZWFzdC0yNTYtYml0cw==}
+  secret: ${JWT_SECRET}  # REQUIRED — no fallback. App will fail to start if missing.
   access-token-expiration: 900000      # 15 minutes
   refresh-token-expiration: 604800000  # 7 days
 
@@ -80,10 +80,10 @@ spring:
       on-profile: prod
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/schedydb
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/schedydb}
     driver-class-name: org.postgresql.Driver
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:root}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5

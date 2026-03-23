@@ -8,6 +8,8 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "banque_conge", indexes = {
     @Index(name = "idx_banque_employe_type", columnList = "employeId, typeCongeId")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uq_banque_employe_type_org", columnNames = {"employeId", "typeCongeId", "organisation_id"})
 })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class BanqueConge {

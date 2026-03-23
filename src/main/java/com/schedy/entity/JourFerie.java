@@ -29,6 +29,8 @@ public class JourFerie {
     @Builder.Default
     private boolean recurrent = false;
 
+    private String siteId;
+
     @Column(name = "organisation_id")
     private String organisationId;
 }

@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.*;
-import com.schedy.entity.*;
+import com.schedy.dto.response.*;
 import com.schedy.service.CongeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/conges")
+@RequestMapping("/api/v1/conges")
 @RequiredArgsConstructor
 public class CongeController {
 
@@ -25,30 +25,30 @@ public class CongeController {
     // ---- Types de congé ----
 
     @GetMapping("/types")
-    public ResponseEntity<Page<TypeConge>> findAllTypes(Pageable pageable) {
-        return ResponseEntity.ok(congeService.findAllTypes(pageable));
+    public ResponseEntity<Page<TypeCongeResponse>> findAllTypes(Pageable pageable) {
+        return ResponseEntity.ok(congeService.findAllTypes(pageable).map(TypeCongeResponse::from));
     }
 
     @GetMapping("/types/all")
-    public ResponseEntity<List<TypeConge>> findAllTypes() {
-        return ResponseEntity.ok(congeService.findAllTypes());
+    public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
+        return ResponseEntity.ok(congeService.findAllTypes().stream().map(TypeCongeResponse::from).toList());
     }
 
     @GetMapping("/types/{id}")
-    public ResponseEntity<TypeConge> findTypeById(@PathVariable String id) {
-        return ResponseEntity.ok(congeService.findTypeById(id));
+    public ResponseEntity<TypeCongeResponse> findTypeById(@PathVariable String id) {
+        return ResponseEntity.ok(TypeCongeResponse.from(congeService.findTypeById(id)));
     }
 
     @PostMapping("/types")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<TypeConge> createType(@Valid @RequestBody TypeCongeDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(congeService.createType(dto));
+    public ResponseEntity<TypeCongeResponse> createType(@Valid @RequestBody TypeCongeDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(TypeCongeResponse.from(congeService.createType(dto)));
     }
 
     @PutMapping("/types/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<TypeConge> updateType(@PathVariable String id, @Valid @RequestBody TypeCongeDto dto) {
-        return ResponseEntity.ok(congeService.updateType(id, dto));
+    public ResponseEntity<TypeCongeResponse> updateType(@PathVariable String id, @Valid @RequestBody TypeCongeDto dto) {
+        return ResponseEntity.ok(TypeCongeResponse.from(congeService.updateType(id, dto)));
     }
 
     @DeleteMapping("/types/{id}")
@@ -61,35 +61,35 @@ public class CongeController {
     // ---- Banques de congé ----
 
     @GetMapping("/banques")
-    public ResponseEntity<Page<BanqueConge>> findAllBanques(Pageable pageable) {
-        return ResponseEntity.ok(congeService.findAllBanques(pageable));
+    public ResponseEntity<Page<BanqueCongeResponse>> findAllBanques(Pageable pageable) {
+        return ResponseEntity.ok(congeService.findAllBanques(pageable).map(BanqueCongeResponse::from));
     }
 
     @GetMapping("/banques/all")
-    public ResponseEntity<List<BanqueConge>> findAllBanques() {
-        return ResponseEntity.ok(congeService.findAllBanques());
+    public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
+        return ResponseEntity.ok(congeService.findAllBanques().stream().map(BanqueCongeResponse::from).toList());
     }
 
     @GetMapping("/banques/{id}")
-    public ResponseEntity<BanqueConge> findBanqueById(@PathVariable String id) {
-        return ResponseEntity.ok(congeService.findBanqueById(id));
+    public ResponseEntity<BanqueCongeResponse> findBanqueById(@PathVariable String id) {
+        return ResponseEntity.ok(BanqueCongeResponse.from(congeService.findBanqueById(id)));
     }
 
     @GetMapping("/banques/employe/{employeId}")
-    public ResponseEntity<List<BanqueConge>> findBanquesByEmployeId(@PathVariable String employeId) {
-        return ResponseEntity.ok(congeService.findBanquesByEmployeId(employeId));
+    public ResponseEntity<List<BanqueCongeResponse>> findBanquesByEmployeId(@PathVariable String employeId) {
+        return ResponseEntity.ok(congeService.findBanquesByEmployeId(employeId).stream().map(BanqueCongeResponse::from).toList());
     }
 
     @PostMapping("/banques")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<BanqueConge> createBanque(@Valid @RequestBody BanqueCongeDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(congeService.createBanque(dto));
+    public ResponseEntity<BanqueCongeResponse> createBanque(@Valid @RequestBody BanqueCongeDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(BanqueCongeResponse.from(congeService.createBanque(dto)));
     }
 
     @PutMapping("/banques/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<BanqueConge> updateBanque(@PathVariable String id, @Valid @RequestBody BanqueCongeDto dto) {
-        return ResponseEntity.ok(congeService.updateBanque(id, dto));
+    public ResponseEntity<BanqueCongeResponse> updateBanque(@PathVariable String id, @Valid @RequestBody BanqueCongeDto dto) {
+        return ResponseEntity.ok(BanqueCongeResponse.from(congeService.updateBanque(id, dto)));
     }
 
     @DeleteMapping("/banques/{id}")
@@ -102,51 +102,52 @@ public class CongeController {
     // ---- Demandes de congé ----
 
     @GetMapping("/demandes")
-    public ResponseEntity<Page<DemandeConge>> findAllDemandes(Pageable pageable) {
-        return ResponseEntity.ok(congeService.findAllDemandes(pageable));
+    public ResponseEntity<Page<DemandeCongeResponse>> findAllDemandes(Pageable pageable) {
+        return ResponseEntity.ok(congeService.findAllDemandes(pageable).map(DemandeCongeResponse::from));
     }
 
     @GetMapping("/demandes/all")
-    public ResponseEntity<List<DemandeConge>> findAllDemandes() {
-        return ResponseEntity.ok(congeService.findAllDemandes());
+    public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
+        return ResponseEntity.ok(congeService.findAllDemandes().stream().map(DemandeCongeResponse::from).toList());
     }
 
     @GetMapping("/demandes/{id}")
-    public ResponseEntity<DemandeConge> findDemandeById(@PathVariable String id) {
-        return ResponseEntity.ok(congeService.findDemandeById(id));
+    public ResponseEntity<DemandeCongeResponse> findDemandeById(@PathVariable String id) {
+        return ResponseEntity.ok(DemandeCongeResponse.from(congeService.findDemandeById(id)));
     }
 
     @GetMapping("/demandes/employe/{employeId}")
-    public ResponseEntity<List<DemandeConge>> findDemandesByEmployeId(@PathVariable String employeId) {
-        return ResponseEntity.ok(congeService.findDemandesByEmployeId(employeId));
+    public ResponseEntity<List<DemandeCongeResponse>> findDemandesByEmployeId(@PathVariable String employeId) {
+        return ResponseEntity.ok(congeService.findDemandesByEmployeId(employeId).stream().map(DemandeCongeResponse::from).toList());
     }
 
     @PostMapping("/demandes")
-    public ResponseEntity<DemandeConge> createDemande(@Valid @RequestBody DemandeCongeDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(congeService.createDemande(dto));
+    public ResponseEntity<DemandeCongeResponse> createDemande(@Valid @RequestBody DemandeCongeDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(DemandeCongeResponse.from(congeService.createDemande(dto)));
     }
 
     @PutMapping("/demandes/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<DemandeConge> updateDemande(@PathVariable String id, @Valid @RequestBody DemandeCongeDto dto) {
-        return ResponseEntity.ok(congeService.updateDemande(id, dto));
+    public ResponseEntity<DemandeCongeResponse> updateDemande(@PathVariable String id, @Valid @RequestBody DemandeCongeDto dto) {
+        return ResponseEntity.ok(DemandeCongeResponse.from(congeService.updateDemande(id, dto)));
     }
 
     @PutMapping("/demandes/{id}/approuver")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<DemandeConge> approveDemande(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
+    public ResponseEntity<DemandeCongeResponse> approveDemande(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
         String note = body != null ? body.get("noteApprobation") : null;
-        return ResponseEntity.ok(congeService.approveDemande(id, note));
+        return ResponseEntity.ok(DemandeCongeResponse.from(congeService.approveDemande(id, note)));
     }
 
     @PutMapping("/demandes/{id}/refuser")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<DemandeConge> refuseDemande(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
+    public ResponseEntity<DemandeCongeResponse> refuseDemande(@PathVariable String id, @RequestBody(required = false) Map<String, String> body) {
         String note = body != null ? body.get("noteApprobation") : null;
-        return ResponseEntity.ok(congeService.refuseDemande(id, note));
+        return ResponseEntity.ok(DemandeCongeResponse.from(congeService.refuseDemande(id, note)));
     }
 
     @DeleteMapping("/demandes/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<Void> deleteDemande(@PathVariable String id) {
         congeService.deleteDemande(id);
         return ResponseEntity.noContent().build();
@@ -155,30 +156,30 @@ public class CongeController {
     // ---- Jours fériés ----
 
     @GetMapping("/feries")
-    public ResponseEntity<Page<JourFerie>> findAllFeries(Pageable pageable) {
-        return ResponseEntity.ok(congeService.findAllFeries(pageable));
+    public ResponseEntity<Page<JourFerieResponse>> findAllFeries(Pageable pageable) {
+        return ResponseEntity.ok(congeService.findAllFeries(pageable).map(JourFerieResponse::from));
     }
 
     @GetMapping("/feries/all")
-    public ResponseEntity<List<JourFerie>> findAllFeries() {
-        return ResponseEntity.ok(congeService.findAllFeries());
+    public ResponseEntity<List<JourFerieResponse>> findAllFeries() {
+        return ResponseEntity.ok(congeService.findAllFeries().stream().map(JourFerieResponse::from).toList());
     }
 
     @GetMapping("/feries/{id}")
-    public ResponseEntity<JourFerie> findFerieById(@PathVariable String id) {
-        return ResponseEntity.ok(congeService.findFerieById(id));
+    public ResponseEntity<JourFerieResponse> findFerieById(@PathVariable String id) {
+        return ResponseEntity.ok(JourFerieResponse.from(congeService.findFerieById(id)));
     }
 
     @PostMapping("/feries")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<JourFerie> createFerie(@Valid @RequestBody JourFerieDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(congeService.createFerie(dto));
+    public ResponseEntity<JourFerieResponse> createFerie(@Valid @RequestBody JourFerieDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(JourFerieResponse.from(congeService.createFerie(dto)));
     }
 
     @PutMapping("/feries/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<JourFerie> updateFerie(@PathVariable String id, @Valid @RequestBody JourFerieDto dto) {
-        return ResponseEntity.ok(congeService.updateFerie(id, dto));
+    public ResponseEntity<JourFerieResponse> updateFerie(@PathVariable String id, @Valid @RequestBody JourFerieDto dto) {
+        return ResponseEntity.ok(JourFerieResponse.from(congeService.updateFerie(id, dto)));
     }
 
     @DeleteMapping("/feries/{id}")

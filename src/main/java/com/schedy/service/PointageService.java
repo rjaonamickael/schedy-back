@@ -3,7 +3,7 @@ package com.schedy.service;
 import com.schedy.config.TenantContext;
 import com.schedy.dto.request.PointerRequest;
 import com.schedy.dto.PointageDto;
-import com.schedy.entity.Pointage;
+import com.schedy.entity.*;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.PointageRepository;
 import lombok.RequiredArgsConstructor;
@@ -95,14 +95,11 @@ public class PointageService {
         String orgId = tenantContext.requireOrganisationId();
         Pointage pointage = pointageRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pointage", id));
-        if (dto.type() != null) pointage.setType(dto.type());
+        if (dto.type() != null) pointage.setType(TypePointage.valueOf(dto.type()));
         if (dto.horodatage() != null) pointage.setHorodatage(dto.horodatage());
-        if (dto.methode() != null) pointage.setMethode(dto.methode());
-        if (dto.statut() != null) pointage.setStatut(dto.statut());
+        if (dto.methode() != null) pointage.setMethode(MethodePointage.valueOf(dto.methode()));
+        if (dto.statut() != null) pointage.setStatut(StatutPointage.valueOf(dto.statut()));
         pointage.setAnomalie(dto.anomalie());
-        if ("corrige".equals(dto.statut()) || "valide".equals(dto.statut())) {
-            pointage.setStatut(dto.statut());
-        }
         return pointageRepository.save(pointage);
     }
 
@@ -117,13 +114,13 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findAnomalies() {
         String orgId = tenantContext.requireOrganisationId();
-        return pointageRepository.findByStatutAndOrganisationId("anomalie", orgId);
+        return pointageRepository.findByStatutAndOrganisationId(StatutPointage.anomalie, orgId);
     }
 
     @Transactional(readOnly = true)
     public List<Pointage> findAnomaliesBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        return pointageRepository.findByStatutAndSiteIdAndOrganisationId("anomalie", siteId, orgId);
+        return pointageRepository.findByStatutAndSiteIdAndOrganisationId(StatutPointage.anomalie, siteId, orgId);
     }
 
     /**
@@ -150,21 +147,21 @@ public class PointageService {
         } else {
             lastPointage = pointageRepository.findTopByEmployeIdAndOrganisationIdOrderByHorodatageDesc(employeId, orgId);
         }
-        String type;
+        TypePointage type;
         String anomalie = null;
-        String statut = "valide";
+        StatutPointage statut = StatutPointage.valide;
 
-        if (lastPointage.isEmpty() || "sortie".equals(lastPointage.get().getType())) {
-            type = "entree";
+        if (lastPointage.isEmpty() || lastPointage.get().getType() == TypePointage.sortie) {
+            type = TypePointage.entree;
         } else {
-            type = "sortie";
+            type = TypePointage.sortie;
 
             // Anomaly detection: check if last entry was more than 12 hours ago
             Pointage last = lastPointage.get();
             Duration duration = Duration.between(last.getHorodatage(), now);
             if (duration.toHours() >= 12) {
                 anomalie = "Duree de travail anormalement longue (" + duration.toHours() + "h) - oubli de sortie possible";
-                statut = "anomalie";
+                statut = StatutPointage.anomalie;
                 log.warn("Anomaly detected for employe {}: {}", employeId, anomalie);
             }
         }
@@ -175,7 +172,7 @@ public class PointageService {
             Duration sinceLast = Duration.between(last.getHorodatage(), now);
             if (sinceLast.toMinutes() < 1) {
                 anomalie = "Double pointage detecte (moins d'une minute entre deux pointages)";
-                statut = "anomalie";
+                statut = StatutPointage.anomalie;
                 log.warn("Double pointage anomaly detected for employe {}", employeId);
             }
         }
@@ -184,7 +181,7 @@ public class PointageService {
                 .employeId(employeId)
                 .type(type)
                 .horodatage(now)
-                .methode(request.methode())
+                .methode(MethodePointage.valueOf(request.methode()))
                 .siteId(siteId)
                 .organisationId(orgId)
                 .statut(statut)

@@ -2,6 +2,7 @@ package com.schedy.config;
 
 import com.schedy.entity.*;
 import com.schedy.repository.*;
+import com.schedy.service.EmployeService;
 import com.schedy.service.PointageCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@org.springframework.context.annotation.Profile({"dev", "test"})
 public class DataInitializer implements CommandLineRunner {
 
     private final OrganisationRepository organisationRepository;
@@ -304,8 +306,8 @@ public class DataInitializer implements CommandLineRunner {
         for (String orgId : List.of(entrepriseOrgId, companyOrgId)) {
             TypeConge congesPayes = TypeConge.builder()
                     .nom("Congé payé")
-                    .categorie("paye")
-                    .unite("jours")
+                    .categorie(CategorieConge.paye)
+                    .unite(UniteConge.jours)
                     .couleur("#4CAF50")
                     .modeQuota("annuel")
                     .quotaIllimite(false)
@@ -315,8 +317,8 @@ public class DataInitializer implements CommandLineRunner {
 
             TypeConge congeSansSolde = TypeConge.builder()
                     .nom("Congé sans solde")
-                    .categorie("non_paye")
-                    .unite("jours")
+                    .categorie(CategorieConge.non_paye)
+                    .unite(UniteConge.jours)
                     .couleur("#FF9800")
                     .modeQuota("illimite")
                     .quotaIllimite(true)
@@ -326,8 +328,8 @@ public class DataInitializer implements CommandLineRunner {
 
             TypeConge arretMaladie = TypeConge.builder()
                     .nom("Arrêt maladie")
-                    .categorie("paye")
-                    .unite("jours")
+                    .categorie(CategorieConge.paye)
+                    .unite(UniteConge.jours)
                     .couleur("#F44336")
                     .modeQuota("illimite")
                     .quotaIllimite(true)
@@ -337,8 +339,8 @@ public class DataInitializer implements CommandLineRunner {
 
             TypeConge congeMaternite = TypeConge.builder()
                     .nom("Congé maternité")
-                    .categorie("paye")
-                    .unite("jours")
+                    .categorie(CategorieConge.paye)
+                    .unite(UniteConge.jours)
                     .couleur("#E91E63")
                     .modeQuota("evenement")
                     .quotaIllimite(false)
@@ -601,7 +603,7 @@ public class DataInitializer implements CommandLineRunner {
                 .dateDebut(nextWeekMonday)
                 .dateFin(nextWeekMonday.plusDays(2))
                 .duree(3)
-                .statut("approuve")
+                .statut(StatutDemande.approuve)
                 .motif("Vacances familiales")
                 .organisationId(entrepriseOrgId)
                 .build();
@@ -614,7 +616,7 @@ public class DataInitializer implements CommandLineRunner {
                 .dateDebut(nextWeekMonday.plusWeeks(1))
                 .dateFin(nextWeekMonday.plusWeeks(1).plusDays(4))
                 .duree(5)
-                .statut("en_attente")
+                .statut(StatutDemande.en_attente)
                 .motif("Voyage personnel")
                 .organisationId(companyOrgId)
                 .build();
@@ -627,7 +629,7 @@ public class DataInitializer implements CommandLineRunner {
                 .dateDebut(LocalDate.now().minusDays(2))
                 .dateFin(LocalDate.now().minusDays(1))
                 .duree(2)
-                .statut("approuve")
+                .statut(StatutDemande.approuve)
                 .motif("Certificat médical fourni")
                 .organisationId(companyOrgId)
                 .build();
@@ -640,7 +642,7 @@ public class DataInitializer implements CommandLineRunner {
                 .dateDebut(nextWeekMonday)
                 .dateFin(nextWeekMonday)
                 .duree(1)
-                .statut("refuse")
+                .statut(StatutDemande.refuse)
                 .motif("Rendez-vous personnel")
                 .organisationId(companyOrgId)
                 .build();
@@ -653,7 +655,7 @@ public class DataInitializer implements CommandLineRunner {
                 .dateDebut(nextWeekMonday.plusWeeks(2))
                 .dateFin(nextWeekMonday.plusWeeks(2).plusDays(1))
                 .duree(2)
-                .statut("en_attente")
+                .statut(StatutDemande.en_attente)
                 .motif("Affaires personnelles")
                 .organisationId(entrepriseOrgId)
                 .build();
@@ -683,7 +685,8 @@ public class DataInitializer implements CommandLineRunner {
                 .role(role)
                 .email(email)
                 .telephone(telephone)
-                .pin(pin)
+                .pin(pin != null ? passwordEncoder.encode(pin) : null)
+                .pinHash(pin != null ? EmployeService.sha256(pin) : null)
                 .organisationId(organisationId)
                 .dateEmbauche(LocalDate.of(2024, 1, 15))
                 .disponibilites(disponibilites)
@@ -739,10 +742,10 @@ public class DataInitializer implements CommandLineRunner {
                                 String methode, String statut, String anomalie, String siteId, String organisationId) {
         Pointage pointage = Pointage.builder()
                 .employeId(employeId)
-                .type(type)
+                .type(TypePointage.valueOf(type))
                 .horodatage(horodatage)
-                .methode(methode)
-                .statut(statut)
+                .methode(MethodePointage.valueOf(methode))
+                .statut(StatutPointage.valueOf(statut))
                 .anomalie(anomalie)
                 .siteId(siteId)
                 .organisationId(organisationId)

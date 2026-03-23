@@ -2,7 +2,7 @@ package com.schedy.controller;
 
 import com.schedy.dto.request.PointerRequest;
 import com.schedy.dto.PointageDto;
-import com.schedy.entity.Pointage;
+import com.schedy.dto.response.PointageResponse;
 import com.schedy.service.PointageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,68 +16,69 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/pointages")
+@RequestMapping("/api/v1/pointages")
 @RequiredArgsConstructor
 public class PointageController {
 
     private final PointageService pointageService;
 
     @GetMapping
-    public ResponseEntity<Page<Pointage>> findAll(Pageable pageable,
+    public ResponseEntity<Page<PointageResponse>> findAll(Pageable pageable,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(pointageService.findBySiteId(siteId, pageable));
+            return ResponseEntity.ok(pointageService.findBySiteId(siteId, pageable).map(PointageResponse::from));
         }
-        return ResponseEntity.ok(pointageService.findAll(pageable));
+        return ResponseEntity.ok(pointageService.findAll(pageable).map(PointageResponse::from));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Pointage> findById(@PathVariable String id) {
-        return ResponseEntity.ok(pointageService.findById(id));
+    public ResponseEntity<PointageResponse> findById(@PathVariable String id) {
+        return ResponseEntity.ok(PointageResponse.from(pointageService.findById(id)));
     }
 
     @GetMapping("/employe/{employeId}")
-    public ResponseEntity<List<Pointage>> findByEmployeId(@PathVariable String employeId,
+    public ResponseEntity<List<PointageResponse>> findByEmployeId(@PathVariable String employeId,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(pointageService.findByEmployeIdAndSiteId(employeId, siteId));
+            return ResponseEntity.ok(pointageService.findByEmployeIdAndSiteId(employeId, siteId).stream().map(PointageResponse::from).toList());
         }
-        return ResponseEntity.ok(pointageService.findByEmployeId(employeId));
+        return ResponseEntity.ok(pointageService.findByEmployeId(employeId).stream().map(PointageResponse::from).toList());
     }
 
     @GetMapping("/aujourd-hui")
-    public ResponseEntity<List<Pointage>> findTodayAll(
+    public ResponseEntity<List<PointageResponse>> findTodayAll(
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(pointageService.findTodayAllBySite(siteId));
+            return ResponseEntity.ok(pointageService.findTodayAllBySite(siteId).stream().map(PointageResponse::from).toList());
         }
-        return ResponseEntity.ok(pointageService.findTodayAll());
+        return ResponseEntity.ok(pointageService.findTodayAll().stream().map(PointageResponse::from).toList());
     }
 
     @GetMapping("/aujourd-hui/employe/{employeId}")
-    public ResponseEntity<List<Pointage>> findTodayByEmployeId(@PathVariable String employeId) {
-        return ResponseEntity.ok(pointageService.findTodayByEmployeId(employeId));
+    public ResponseEntity<List<PointageResponse>> findTodayByEmployeId(@PathVariable String employeId) {
+        return ResponseEntity.ok(pointageService.findTodayByEmployeId(employeId).stream().map(PointageResponse::from).toList());
     }
 
     @GetMapping("/anomalies")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<List<Pointage>> findAnomalies(
+    public ResponseEntity<List<PointageResponse>> findAnomalies(
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(pointageService.findAnomaliesBySite(siteId));
+            return ResponseEntity.ok(pointageService.findAnomaliesBySite(siteId).stream().map(PointageResponse::from).toList());
         }
-        return ResponseEntity.ok(pointageService.findAnomalies());
+        return ResponseEntity.ok(pointageService.findAnomalies().stream().map(PointageResponse::from).toList());
     }
 
     @PostMapping("/pointer")
-    public ResponseEntity<Pointage> pointer(@Valid @RequestBody PointerRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(pointageService.pointer(request));
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<PointageResponse> pointer(@Valid @RequestBody PointerRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(PointageResponse.from(pointageService.pointer(request)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Pointage> update(@PathVariable String id, @Valid @RequestBody PointageDto dto) {
-        return ResponseEntity.ok(pointageService.update(id, dto));
+    public ResponseEntity<PointageResponse> update(@PathVariable String id, @Valid @RequestBody PointageDto dto) {
+        return ResponseEntity.ok(PointageResponse.from(pointageService.update(id, dto)));
     }
 
     @DeleteMapping("/{id}")

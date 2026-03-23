@@ -21,18 +21,21 @@ public class Pointage {
     @Column(nullable = false)
     private String employeId;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String type; // entree, sortie
+    private TypePointage type;
 
     @Column(nullable = false)
     private LocalDateTime horodatage;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String methode; // pin, web, qr, manuel
+    private MethodePointage methode;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private String statut = "valide"; // valide, anomalie, corrige
+    private StatutPointage statut = StatutPointage.valide;
 
     private String anomalie;
 

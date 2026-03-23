@@ -42,8 +42,8 @@ public class AuthService {
                 throw new IllegalArgumentException("Rôle invalide : " + request.role());
             }
         }
-        if (role == User.UserRole.ADMIN) {
-            throw new IllegalArgumentException("L'inscription en tant qu'ADMIN n'est pas autorisée");
+        if (role == User.UserRole.ADMIN || role == User.UserRole.MANAGER) {
+            throw new IllegalArgumentException("L'inscription en tant qu'" + role + " n'est pas autorisée. Contactez un administrateur.");
         }
 
         User user = User.builder()

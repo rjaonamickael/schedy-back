@@ -1,5 +1,6 @@
 package com.schedy.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -13,7 +14,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "employe", indexes = {
     @Index(name = "idx_employe_org", columnList = "organisationId"),
-    @Index(name = "idx_employe_pin", columnList = "pin")
+    @Index(name = "idx_employe_pin_hash", columnList = "pinHash, organisationId")
 })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Employe {
@@ -42,7 +43,11 @@ public class Employe {
 
     private LocalDate dateEmbauche;
 
+    @JsonIgnore
     private String pin;
+
+    @JsonIgnore
+    private String pinHash;
 
     private String organisationId;
 

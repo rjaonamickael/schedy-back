@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.ExigenceDto;
-import com.schedy.entity.Exigence;
+import com.schedy.dto.response.ExigenceResponse;
 import com.schedy.service.ExigenceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,54 +15,54 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/exigences")
+@RequestMapping("/api/v1/exigences")
 @RequiredArgsConstructor
 public class ExigenceController {
 
     private final ExigenceService exigenceService;
 
     @GetMapping
-    public ResponseEntity<Page<Exigence>> findAll(Pageable pageable,
+    public ResponseEntity<Page<ExigenceResponse>> findAll(Pageable pageable,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(exigenceService.findBySiteId(siteId, pageable));
+            return ResponseEntity.ok(exigenceService.findBySiteId(siteId, pageable).map(ExigenceResponse::from));
         }
-        return ResponseEntity.ok(exigenceService.findAll(pageable));
+        return ResponseEntity.ok(exigenceService.findAll(pageable).map(ExigenceResponse::from));
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<Exigence>> findAll(
+    public ResponseEntity<List<ExigenceResponse>> findAll(
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(exigenceService.findBySiteId(siteId));
+            return ResponseEntity.ok(exigenceService.findBySiteId(siteId).stream().map(ExigenceResponse::from).toList());
         }
-        return ResponseEntity.ok(exigenceService.findAll());
+        return ResponseEntity.ok(exigenceService.findAll().stream().map(ExigenceResponse::from).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Exigence> findById(@PathVariable String id) {
-        return ResponseEntity.ok(exigenceService.findById(id));
+    public ResponseEntity<ExigenceResponse> findById(@PathVariable String id) {
+        return ResponseEntity.ok(ExigenceResponse.from(exigenceService.findById(id)));
     }
 
     @GetMapping("/role/{role}")
-    public ResponseEntity<List<Exigence>> findByRole(@PathVariable String role,
+    public ResponseEntity<List<ExigenceResponse>> findByRole(@PathVariable String role,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
-            return ResponseEntity.ok(exigenceService.findByRoleAndSiteId(role, siteId));
+            return ResponseEntity.ok(exigenceService.findByRoleAndSiteId(role, siteId).stream().map(ExigenceResponse::from).toList());
         }
-        return ResponseEntity.ok(exigenceService.findByRole(role));
+        return ResponseEntity.ok(exigenceService.findByRole(role).stream().map(ExigenceResponse::from).toList());
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Exigence> create(@Valid @RequestBody ExigenceDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(exigenceService.create(dto));
+    public ResponseEntity<ExigenceResponse> create(@Valid @RequestBody ExigenceDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ExigenceResponse.from(exigenceService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Exigence> update(@PathVariable String id, @Valid @RequestBody ExigenceDto dto) {
-        return ResponseEntity.ok(exigenceService.update(id, dto));
+    public ResponseEntity<ExigenceResponse> update(@PathVariable String id, @Valid @RequestBody ExigenceDto dto) {
+        return ResponseEntity.ok(ExigenceResponse.from(exigenceService.update(id, dto)));
     }
 
     @DeleteMapping("/{id}")

@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS parametres (
     heure_fin              INTEGER NOT NULL DEFAULT 22,
     premier_jour           INTEGER NOT NULL DEFAULT 1,
     duree_min_affectation  FLOAT8 NOT NULL DEFAULT 1.0,
+    heures_max_semaine     FLOAT8 NOT NULL DEFAULT 48.0,
     site_id                VARCHAR(255),
     organisation_id        VARCHAR(255),
     taille_police          VARCHAR(255),
@@ -215,12 +216,14 @@ CREATE TABLE IF NOT EXISTS banque_conge (
     CONSTRAINT pk_banque_conge PRIMARY KEY (id)
 );
 CREATE INDEX IF NOT EXISTS idx_banque_employe_type ON banque_conge (employe_id, type_conge_id);
+ALTER TABLE banque_conge ADD CONSTRAINT IF NOT EXISTS uq_banque_employe_type_org UNIQUE (employe_id, type_conge_id, organisation_id);
 
 CREATE TABLE IF NOT EXISTS jour_ferie (
     id              VARCHAR(255) NOT NULL,
     nom             VARCHAR(255) NOT NULL,
     date            DATE NOT NULL,
     recurrent       BOOLEAN NOT NULL DEFAULT FALSE,
+    site_id         VARCHAR(255),
     organisation_id VARCHAR(255),
     CONSTRAINT pk_jour_ferie PRIMARY KEY (id)
 );

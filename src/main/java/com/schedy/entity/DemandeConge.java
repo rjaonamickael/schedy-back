@@ -37,9 +37,10 @@ public class DemandeConge {
     @Column(nullable = false)
     private double duree;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private String statut = "en_attente"; // en_attente, approuve, refuse
+    private StatutDemande statut = StatutDemande.en_attente;
 
     private String motif;
 

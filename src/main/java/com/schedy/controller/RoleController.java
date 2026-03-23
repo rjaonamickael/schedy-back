@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.RoleDto;
-import com.schedy.entity.Role;
+import com.schedy.dto.response.RoleResponse;
 import com.schedy.service.RoleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,43 +15,43 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/roles")
+@RequestMapping("/api/v1/roles")
 @RequiredArgsConstructor
 public class RoleController {
 
     private final RoleService roleService;
 
     @GetMapping
-    public ResponseEntity<Page<Role>> findAll(Pageable pageable) {
-        return ResponseEntity.ok(roleService.findAll(pageable));
+    public ResponseEntity<Page<RoleResponse>> findAll(Pageable pageable) {
+        return ResponseEntity.ok(roleService.findAll(pageable).map(RoleResponse::from));
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<Role>> findAllOrdered() {
-        return ResponseEntity.ok(roleService.findAllOrdered());
+    public ResponseEntity<List<RoleResponse>> findAllOrdered() {
+        return ResponseEntity.ok(roleService.findAllOrdered().stream().map(RoleResponse::from).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Role> findById(@PathVariable String id) {
-        return ResponseEntity.ok(roleService.findById(id));
+    public ResponseEntity<RoleResponse> findById(@PathVariable String id) {
+        return ResponseEntity.ok(RoleResponse.from(roleService.findById(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Role> create(@Valid @RequestBody RoleDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(roleService.create(dto));
+    public ResponseEntity<RoleResponse> create(@Valid @RequestBody RoleDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(RoleResponse.from(roleService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Role> update(@PathVariable String id, @Valid @RequestBody RoleDto dto) {
-        return ResponseEntity.ok(roleService.update(id, dto));
+    public ResponseEntity<RoleResponse> update(@PathVariable String id, @Valid @RequestBody RoleDto dto) {
+        return ResponseEntity.ok(RoleResponse.from(roleService.update(id, dto)));
     }
 
     @PatchMapping("/reorder")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<List<Role>> reorder(@RequestBody List<RoleDto> roles) {
-        return ResponseEntity.ok(roleService.reorder(roles));
+    public ResponseEntity<List<RoleResponse>> reorder(@RequestBody List<RoleDto> roles) {
+        return ResponseEntity.ok(roleService.reorder(roles).stream().map(RoleResponse::from).toList());
     }
 
     @DeleteMapping("/{id}")

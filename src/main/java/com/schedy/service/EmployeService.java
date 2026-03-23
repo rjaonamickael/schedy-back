@@ -12,10 +12,15 @@ import com.schedy.repository.PointageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +34,7 @@ public class EmployeService {
     private final PointageRepository pointageRepository;
     private final DemandeCongeRepository demandeCongeRepository;
     private final BanqueCongeRepository banqueCongeRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
     public Page<Employe> findAll(Pageable pageable) {
@@ -49,10 +55,16 @@ public class EmployeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employe", id));
     }
 
+    /**
+     * Find employee by raw PIN. Uses SHA-256 index for O(1) lookup,
+     * then verifies with bcrypt for security.
+     */
     @Transactional(readOnly = true)
-    public Optional<Employe> findByPin(String pin) {
+    public Optional<Employe> findByPin(String rawPin) {
         String orgId = tenantContext.requireOrganisationId();
-        return employeRepository.findByPinAndOrganisationId(pin, orgId);
+        String hash = sha256(rawPin);
+        return employeRepository.findByPinHashAndOrganisationId(hash, orgId)
+                .filter(emp -> emp.getPin() != null && passwordEncoder.matches(rawPin, emp.getPin()));
     }
 
     @Transactional(readOnly = true)
@@ -83,7 +95,8 @@ public class EmployeService {
                 .email(dto.email())
                 .dateNaissance(dto.dateNaissance())
                 .dateEmbauche(dto.dateEmbauche())
-                .pin(dto.pin())
+                .pin(dto.pin() != null ? passwordEncoder.encode(dto.pin()) : null)
+                .pinHash(dto.pin() != null ? sha256(dto.pin()) : null)
                 .organisationId(orgId)
                 .disponibilites(dto.disponibilites() != null ? dto.disponibilites() : Collections.emptyList())
                 .siteIds(dto.siteIds() != null ? dto.siteIds() : Collections.emptyList())
@@ -102,7 +115,10 @@ public class EmployeService {
         employe.setEmail(dto.email());
         employe.setDateNaissance(dto.dateNaissance());
         employe.setDateEmbauche(dto.dateEmbauche());
-        employe.setPin(dto.pin());
+        if (dto.pin() != null && !dto.pin().isBlank()) {
+            employe.setPin(passwordEncoder.encode(dto.pin()));
+            employe.setPinHash(sha256(dto.pin()));
+        }
         if (dto.disponibilites() != null) {
             employe.getDisponibilites().clear();
             employe.getDisponibilites().addAll(dto.disponibilites());
@@ -112,6 +128,16 @@ public class EmployeService {
             employe.getSiteIds().addAll(dto.siteIds());
         }
         return employeRepository.save(employe);
+    }
+
+    /**
+     * Verify a raw PIN against the hashed PIN stored for the employee.
+     */
+    public boolean verifyPin(String employeId, String rawPin) {
+        String orgId = tenantContext.requireOrganisationId();
+        return employeRepository.findByIdAndOrganisationId(employeId, orgId)
+                .map(emp -> emp.getPin() != null && passwordEncoder.matches(rawPin, emp.getPin()))
+                .orElse(false);
     }
 
     @Transactional
@@ -124,5 +150,19 @@ public class EmployeService {
         demandeCongeRepository.deleteByEmployeIdAndOrganisationId(id, orgId);
         banqueCongeRepository.deleteByEmployeIdAndOrganisationId(id, orgId);
         employeRepository.delete(employe);
+    }
+
+    /**
+     * Compute SHA-256 hex digest of a string. Used as a fast-lookup index
+     * for PIN matching before the expensive bcrypt verification.
+     */
+    public static String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 }

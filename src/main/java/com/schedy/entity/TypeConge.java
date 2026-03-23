@@ -19,11 +19,13 @@ public class TypeConge {
     @Column(nullable = false)
     private String nom;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String categorie; // paye, non_paye
+    private CategorieConge categorie;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String unite; // heures, jours
+    private UniteConge unite;
 
     @Column(name = "organisation_id")
     private String organisationId;
@@ -39,7 +41,10 @@ public class TypeConge {
     private boolean autoriserNegatif = false;
 
     private Double accrualMontant;
-    private String accrualFrequence; // mensuel, hebdomadaire, annuel
+
+    @Enumerated(EnumType.STRING)
+    private FrequenceAccrual accrualFrequence;
+
     private Double reportMax;
-    private Integer reportDuree; // en mois
+    private Integer reportDuree;
 }
