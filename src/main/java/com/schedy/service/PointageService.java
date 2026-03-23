@@ -28,22 +28,26 @@ public class PointageService {
     private final PointageRepository pointageRepository;
     private final TenantContext tenantContext;
 
+    @Transactional(readOnly = true)
     public Page<Pointage> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public Pointage findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pointage", id));
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findTodayAll() {
         String orgId = tenantContext.requireOrganisationId();
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
@@ -51,6 +55,7 @@ public class PointageService {
         return pointageRepository.findByOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(orgId, startOfDay, endOfDay);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findTodayAllBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
@@ -58,16 +63,19 @@ public class PointageService {
         return pointageRepository.findBySiteIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(siteId, orgId, startOfDay, endOfDay);
     }
 
+    @Transactional(readOnly = true)
     public Page<Pointage> findBySiteId(String siteId, Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findBySiteIdAndOrganisationId(siteId, orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findByEmployeIdAndSiteId(String employeId, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByEmployeIdAndSiteIdAndOrganisationId(employeId, siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findTodayByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
@@ -106,11 +114,13 @@ public class PointageService {
         pointageRepository.delete(pointage);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findAnomalies() {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByStatutAndOrganisationId("anomalie", orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Pointage> findAnomaliesBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return pointageRepository.findByStatutAndSiteIdAndOrganisationId("anomalie", siteId, orgId);

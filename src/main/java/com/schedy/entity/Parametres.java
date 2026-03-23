@@ -2,6 +2,7 @@ package com.schedy.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ public class Parametres {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "parametres_jours_actifs", joinColumns = @JoinColumn(name = "parametres_id"))
     @Column(name = "jour")
+    @BatchSize(size = 50)
     @Builder.Default
     private List<Integer> joursActifs = new ArrayList<>();
 
@@ -48,6 +50,7 @@ public class Parametres {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "parametres_regles_affectation", joinColumns = @JoinColumn(name = "parametres_id"))
     @Column(name = "regle")
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> reglesAffectation = new ArrayList<>();
 }

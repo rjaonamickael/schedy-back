@@ -48,7 +48,7 @@ public class RoleController {
         return ResponseEntity.ok(roleService.update(id, dto));
     }
 
-    @PutMapping("/reorder")
+    @PatchMapping("/reorder")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<List<Role>> reorder(@RequestBody List<RoleDto> roles) {
         return ResponseEntity.ok(roleService.reorder(roles));

@@ -59,12 +59,19 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
-    defer-datasource-initialization: true
+
+  flyway:
+    enabled: false
 
   sql:
     init:
-      mode: always
-      platform: postgresql
+      mode: never
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 ---
 spring:
@@ -88,6 +95,10 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
 
   sql:
     init:

@@ -8,7 +8,9 @@ import lombok.*;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "jour_ferie")
+@Table(name = "jour_ferie", indexes = {
+    @Index(name = "idx_jour_ferie_org", columnList = "organisation_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class JourFerie {
 

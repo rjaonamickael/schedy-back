@@ -17,10 +17,12 @@ public class OrganisationService {
 
     private final OrganisationRepository organisationRepository;
 
+    @Transactional(readOnly = true)
     public List<Organisation> findAll() {
         return organisationRepository.findAll();
     }
 
+    @Transactional(readOnly = true)
     public Organisation findById(String id) {
         return organisationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organisation non trouvée"));

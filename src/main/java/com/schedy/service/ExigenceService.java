@@ -21,37 +21,44 @@ public class ExigenceService {
     private final ExigenceRepository exigenceRepository;
     private final TenantContext tenantContext;
 
+    @Transactional(readOnly = true)
     public List<Exigence> findAll() {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<Exigence> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public Exigence findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Exigence", id));
     }
 
+    @Transactional(readOnly = true)
     public List<Exigence> findByRole(String role) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findByRoleAndOrganisationId(role, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Exigence> findBySiteId(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findBySiteIdAndOrganisationId(siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<Exigence> findBySiteId(String siteId, Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findBySiteIdAndOrganisationId(siteId, orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<Exigence> findByRoleAndSiteId(String role, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return exigenceRepository.findByRoleAndSiteIdAndOrganisationId(role, siteId, orgId);

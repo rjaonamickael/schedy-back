@@ -5,7 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
 @Entity
-@Table(name = "type_conge")
+@Table(name = "type_conge", indexes = {
+    @Index(name = "idx_type_conge_org", columnList = "organisation_id")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class TypeConge {
 

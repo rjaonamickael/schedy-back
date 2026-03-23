@@ -22,18 +22,18 @@ public class SiteController {
     private final SiteService siteService;
 
     @GetMapping
-    public Page<Site> getAll(Pageable pageable) {
-        return siteService.findAll(pageable);
+    public ResponseEntity<Page<Site>> getAll(Pageable pageable) {
+        return ResponseEntity.ok(siteService.findAll(pageable));
     }
 
     @GetMapping("/all")
-    public List<Site> getAllActifs() {
-        return siteService.findAllActifs();
+    public ResponseEntity<List<Site>> getAllActifs() {
+        return ResponseEntity.ok(siteService.findAllActifs());
     }
 
     @GetMapping("/{id}")
-    public Site getById(@PathVariable String id) {
-        return siteService.findById(id);
+    public ResponseEntity<Site> getById(@PathVariable String id) {
+        return ResponseEntity.ok(siteService.findById(id));
     }
 
     @PostMapping
@@ -44,13 +44,14 @@ public class SiteController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public Site update(@PathVariable String id, @Valid @RequestBody SiteDto dto) {
-        return siteService.update(id, dto);
+    public ResponseEntity<Site> update(@PathVariable String id, @Valid @RequestBody SiteDto dto) {
+        return ResponseEntity.ok(siteService.update(id, dto));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public void delete(@PathVariable String id) {
+    public ResponseEntity<Void> delete(@PathVariable String id) {
         siteService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

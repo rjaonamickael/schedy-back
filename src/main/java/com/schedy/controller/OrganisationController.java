@@ -21,13 +21,13 @@ public class OrganisationController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Organisation> getAll() {
-        return organisationService.findAll();
+    public ResponseEntity<List<Organisation>> getAll() {
+        return ResponseEntity.ok(organisationService.findAll());
     }
 
     @GetMapping("/{id}")
-    public Organisation getById(@PathVariable String id) {
-        return organisationService.findById(id);
+    public ResponseEntity<Organisation> getById(@PathVariable String id) {
+        return ResponseEntity.ok(organisationService.findById(id));
     }
 
     @PostMapping
@@ -38,13 +38,14 @@ public class OrganisationController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Organisation update(@PathVariable String id, @Valid @RequestBody OrganisationDto dto) {
-        return organisationService.update(id, dto);
+    public ResponseEntity<Organisation> update(@PathVariable String id, @Valid @RequestBody OrganisationDto dto) {
+        return ResponseEntity.ok(organisationService.update(id, dto));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public void delete(@PathVariable String id) {
+    public ResponseEntity<Void> delete(@PathVariable String id) {
         organisationService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

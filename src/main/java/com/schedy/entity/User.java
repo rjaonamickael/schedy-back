@@ -6,7 +6,9 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
 @Entity
-@Table(name = "app_user")
+@Table(name = "app_user", indexes = {
+    @Index(name = "idx_user_org", columnList = "organisationId")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 

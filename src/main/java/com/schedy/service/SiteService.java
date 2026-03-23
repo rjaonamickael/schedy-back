@@ -26,21 +26,25 @@ public class SiteService {
     private final TenantContext tenantContext;
     private final PointageCodeService pointageCodeService;
 
+    @Transactional(readOnly = true)
     public Page<Site> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return siteRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<Site> findAll() {
         String orgId = tenantContext.requireOrganisationId();
         return siteRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Site> findAllActifs() {
         String orgId = tenantContext.requireOrganisationId();
         return siteRepository.findByOrganisationIdAndActifTrue(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Site findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return siteRepository.findByIdAndOrganisationId(id, orgId)

@@ -18,6 +18,7 @@ public class ParametresService {
     private final ParametresRepository parametresRepository;
     private final TenantContext tenantContext;
 
+    @Transactional
     public Parametres get() {
         String orgId = tenantContext.requireOrganisationId();
         return parametresRepository.findBySiteIdIsNullAndOrganisationId(orgId)
@@ -34,6 +35,7 @@ public class ParametresService {
                 });
     }
 
+    @Transactional
     public Parametres getBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         Optional<Parametres> bySite = parametresRepository.findBySiteIdAndOrganisationId(siteId, orgId);

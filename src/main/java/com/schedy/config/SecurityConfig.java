@@ -40,6 +40,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/pointage-codes/validate").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // H2 console only in dev profile
                     for (String profile : environment.getActiveProfiles()) {

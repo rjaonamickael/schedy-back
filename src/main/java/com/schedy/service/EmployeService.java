@@ -49,21 +49,25 @@ public class EmployeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employe", id));
     }
 
+    @Transactional(readOnly = true)
     public Optional<Employe> findByPin(String pin) {
         String orgId = tenantContext.requireOrganisationId();
         return employeRepository.findByPinAndOrganisationId(pin, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Employe> findByRole(String role) {
         String orgId = tenantContext.requireOrganisationId();
         return employeRepository.findByRoleAndOrganisationId(role, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<Employe> findBySiteId(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return employeRepository.findBySiteIdsContainingAndOrganisationId(siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<Employe> findBySiteId(String siteId, Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return employeRepository.findBySiteIdsContainingAndOrganisationId(siteId, orgId, pageable);

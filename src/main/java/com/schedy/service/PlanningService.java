@@ -20,47 +20,56 @@ public class PlanningService {
     private final CreneauAssigneRepository creneauRepository;
     private final TenantContext tenantContext;
 
+    @Transactional(readOnly = true)
     public Page<CreneauAssigne> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public CreneauAssigne findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Creneau", id));
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findBySemaine(String semaine) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findBySemaineAndOrganisationId(semaine, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findBySemaineAndSite(String semaine, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findBySemaineAndSiteIdAndOrganisationId(semaine, siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSite(String employeId, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByEmployeIdAndSiteIdAndOrganisationId(employeId, siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSemaine(String employeId, String semaine) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByEmployeIdAndSemaineAndOrganisationId(employeId, semaine, orgId);
     }
 
+    @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSemaineAndSite(String employeId, String semaine, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(employeId, semaine, siteId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<CreneauAssigne> findBySite(String siteId, Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return creneauRepository.findBySiteIdAndOrganisationId(siteId, orgId, pageable);

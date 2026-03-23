@@ -20,16 +20,19 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final TenantContext tenantContext;
 
+    @Transactional(readOnly = true)
     public List<Role> findAllOrdered() {
         String orgId = tenantContext.requireOrganisationId();
         return roleRepository.findByOrganisationIdOrderByImportanceAsc(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<Role> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return roleRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public Role findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return roleRepository.findByIdAndOrganisationId(id, orgId)
@@ -78,15 +81,17 @@ public class RoleService {
     @Transactional
     public List<Role> reorder(List<RoleDto> roles) {
         String orgId = tenantContext.requireOrganisationId();
+        List<Role> toSave = new java.util.ArrayList<>();
         for (int i = 0; i < roles.size(); i++) {
             RoleDto dto = roles.get(i);
             if (dto.id() != null) {
                 Role role = roleRepository.findByIdAndOrganisationId(dto.id(), orgId)
                         .orElseThrow(() -> new ResourceNotFoundException("Role", dto.id()));
                 role.setImportance(i);
-                roleRepository.save(role);
+                toSave.add(role);
             }
         }
+        roleRepository.saveAll(toSave);
         return findAllOrdered();
     }
 }

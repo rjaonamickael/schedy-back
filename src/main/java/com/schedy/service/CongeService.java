@@ -3,6 +3,7 @@ package com.schedy.service;
 import com.schedy.config.TenantContext;
 import com.schedy.dto.*;
 import com.schedy.entity.*;
+import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -27,16 +28,19 @@ public class CongeService {
 
     // ---- TypeConge ----
 
+    @Transactional(readOnly = true)
     public List<TypeConge> findAllTypes() {
         String orgId = tenantContext.requireOrganisationId();
         return typeCongeRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<TypeConge> findAllTypes(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return typeCongeRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public TypeConge findTypeById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return typeCongeRepository.findByIdAndOrganisationId(id, orgId)
@@ -87,26 +91,47 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         TypeConge type = typeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Type de conge", id));
+
+        // Check for approved demandes — block deletion if any exist
+        List<DemandeConge> approvedDemandes = demandeCongeRepository.findByOrganisationId(orgId).stream()
+                .filter(d -> id.equals(d.getTypeCongeId()) && "approuve".equals(d.getStatut()))
+                .toList();
+        if (!approvedDemandes.isEmpty()) {
+            throw new BusinessRuleException("Impossible de supprimer ce type: " + approvedDemandes.size() + " demande(s) approuvee(s) existent");
+        }
+
+        // Clean up related banques and pending/refused demandes
+        banqueCongeRepository.findByOrganisationId(orgId).stream()
+                .filter(b -> id.equals(b.getTypeCongeId()))
+                .forEach(banqueCongeRepository::delete);
+        demandeCongeRepository.findByOrganisationId(orgId).stream()
+                .filter(d -> id.equals(d.getTypeCongeId()))
+                .forEach(demandeCongeRepository::delete);
+
         typeCongeRepository.delete(type);
     }
 
     // ---- BanqueConge ----
 
+    @Transactional(readOnly = true)
     public List<BanqueConge> findAllBanques() {
         String orgId = tenantContext.requireOrganisationId();
         return banqueCongeRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<BanqueConge> findAllBanques(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return banqueCongeRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<BanqueConge> findBanquesByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
         return banqueCongeRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public BanqueConge findBanqueById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return banqueCongeRepository.findByIdAndOrganisationId(id, orgId)
@@ -154,21 +179,25 @@ public class CongeService {
 
     // ---- DemandeConge ----
 
+    @Transactional(readOnly = true)
     public List<DemandeConge> findAllDemandes() {
         String orgId = tenantContext.requireOrganisationId();
         return demandeCongeRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<DemandeConge> findAllDemandes(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return demandeCongeRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<DemandeConge> findDemandesByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
         return demandeCongeRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
+    @Transactional(readOnly = true)
     public DemandeConge findDemandeById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
@@ -202,7 +231,7 @@ public class CongeService {
                         if (!quotaIllimite && !autoriserNegatif) {
                             double disponible = banque.getQuota() - banque.getUtilise() - banque.getEnAttente();
                             if (dto.duree() > disponible) {
-                                throw new IllegalStateException(
+                                throw new BusinessRuleException(
                                         "Quota insuffisant: " + disponible + " disponible, " + dto.duree() + " demande");
                             }
                         }
@@ -227,7 +256,7 @@ public class CongeService {
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
         if (!"en_attente".equals(demande.getStatut())) {
-            throw new IllegalStateException("Seules les demandes en attente peuvent etre approuvees");
+            throw new BusinessRuleException("Seules les demandes en attente peuvent etre approuvees");
         }
 
         demande.setStatut("approuve");
@@ -252,7 +281,7 @@ public class CongeService {
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
         if (!"en_attente".equals(demande.getStatut())) {
-            throw new IllegalStateException("Seules les demandes en attente peuvent etre refusees");
+            throw new BusinessRuleException("Seules les demandes en attente peuvent etre refusees");
         }
 
         demande.setStatut("refuse");
@@ -304,16 +333,19 @@ public class CongeService {
 
     // ---- JourFerie ----
 
+    @Transactional(readOnly = true)
     public List<JourFerie> findAllFeries() {
         String orgId = tenantContext.requireOrganisationId();
         return jourFerieRepository.findByOrganisationId(orgId);
     }
 
+    @Transactional(readOnly = true)
     public Page<JourFerie> findAllFeries(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
         return jourFerieRepository.findByOrganisationId(orgId, pageable);
     }
 
+    @Transactional(readOnly = true)
     public JourFerie findFerieById(String id) {
         String orgId = tenantContext.requireOrganisationId();
         return jourFerieRepository.findByIdAndOrganisationId(id, orgId)
