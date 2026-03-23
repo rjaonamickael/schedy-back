@@ -1,0 +1,39 @@
+# Build
+target/
+bin/
+build/
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+
+# IDE - Eclipse
+.classpath
+.factorypath
+.project
+.settings/
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# IDE - VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+*.env.local
+
+# Application
+application-local.properties
+application-local.yml
