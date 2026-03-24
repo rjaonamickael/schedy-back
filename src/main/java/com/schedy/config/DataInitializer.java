@@ -13,7 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Arrays;
 import java.util.List;
@@ -738,8 +739,10 @@ public class DataInitializer implements CommandLineRunner {
         creneauAssigneRepository.save(creneau);
     }
 
-    private void createPointage(String employeId, String type, LocalDateTime horodatage,
+    private void createPointage(String employeId, String type, java.time.LocalDateTime localHorodatage,
                                 String methode, String statut, String anomalie, String siteId, String organisationId) {
+        // Convert LocalDateTime to OffsetDateTime (UTC) for the entity
+        OffsetDateTime horodatage = localHorodatage.atOffset(ZoneOffset.UTC);
         Pointage pointage = Pointage.builder()
                 .employeId(employeId)
                 .type(TypePointage.valueOf(type))

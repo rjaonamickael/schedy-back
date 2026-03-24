@@ -62,13 +62,16 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("login() throws 404 for unknown email")
-    void login_throws404_unknownEmail() {
+    @DisplayName("login() throws 401 for unknown email (no user enumeration)")
+    void login_throws401_unknownEmail() {
         when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.empty());
+        // Dummy bcrypt hash is called for constant-time behavior
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> authService.login(new AuthRequest(EMAIL, PASSWORD)));
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(ex.getReason()).isEqualTo("Identifiant ou mot de passe incorrect");
     }
 
     @Test
@@ -80,6 +83,7 @@ class AuthServiceTest {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> authService.login(new AuthRequest(EMAIL, PASSWORD)));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(ex.getReason()).isEqualTo("Identifiant ou mot de passe incorrect");
     }
 
     @Test

@@ -133,6 +133,30 @@ public class PointageService {
         return buildAndSavePointage(request, organisationId);
     }
 
+    private TypePointage parseTypePointage(String value) {
+        try {
+            return TypePointage.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new com.schedy.exception.BusinessRuleException("Valeur invalide pour type pointage: " + value);
+        }
+    }
+
+    private MethodePointage parseMethodePointage(String value) {
+        try {
+            return MethodePointage.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new com.schedy.exception.BusinessRuleException("Valeur invalide pour methode pointage: " + value);
+        }
+    }
+
+    private StatutPointage parseStatutPointage(String value) {
+        try {
+            return StatutPointage.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new com.schedy.exception.BusinessRuleException("Valeur invalide pour statut pointage: " + value);
+        }
+    }
+
     /**
      * Shared logic for building and saving a pointage, used by both pointer() and pointerFromKiosk().
      */

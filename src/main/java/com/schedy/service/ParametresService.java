@@ -53,6 +53,7 @@ public class ParametresService {
         }
         parametres.setPremierJour(dto.premierJour());
         parametres.setDureeMinAffectation(dto.dureeMinAffectation());
+        parametres.setHeuresMaxSemaine(dto.heuresMaxSemaine());
         parametres.setTaillePolice(dto.taillePolice());
         parametres.setPlanningVue(dto.planningVue());
         parametres.setPlanningGranularite(dto.planningGranularite());
@@ -87,6 +88,7 @@ public class ParametresService {
         }
         parametres.setPremierJour(dto.premierJour());
         parametres.setDureeMinAffectation(dto.dureeMinAffectation());
+        parametres.setHeuresMaxSemaine(dto.heuresMaxSemaine());
         parametres.setTaillePolice(dto.taillePolice());
         parametres.setPlanningVue(dto.planningVue());
         parametres.setPlanningGranularite(dto.planningGranularite());

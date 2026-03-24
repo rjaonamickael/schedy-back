@@ -5,6 +5,7 @@ import com.schedy.dto.PointageCodeDto;
 import com.schedy.entity.PointageCode;
 import com.schedy.entity.PointageCode.FrequenceRotation;
 import com.schedy.entity.Site;
+import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
 import com.schedy.repository.SiteRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +17,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +31,7 @@ import static org.mockito.Mockito.*;
 class PointageCodeServiceTest {
 
     @Mock private PointageCodeRepository pointageCodeRepository;
+    @Mock private EmployeRepository employeRepository;
     @Mock private SiteRepository siteRepository;
     @Mock private TenantContext tenantContext;
 
@@ -45,8 +48,8 @@ class PointageCodeServiceTest {
     private PointageCode buildValidCode() {
         return PointageCode.builder().id("code-1").siteId(SITE_ID).code("ABCD1234").pin("123456")
                 .frequence(FrequenceRotation.QUOTIDIEN)
-                .validFrom(LocalDateTime.now().minusHours(1))
-                .validTo(LocalDateTime.now().plusHours(23))
+                .validFrom(OffsetDateTime.now(ZoneOffset.UTC).minusHours(1))
+                .validTo(OffsetDateTime.now(ZoneOffset.UTC).plusHours(23))
                 .actif(true).organisationId(ORG_ID).build();
     }
 
