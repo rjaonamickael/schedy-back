@@ -6,6 +6,7 @@ import com.schedy.service.EmployeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,14 +35,13 @@ public class EmployeController {
     @GetMapping("/all")
     public ResponseEntity<List<EmployeResponse>> findAll(
             @RequestParam(value = "siteId", required = false) String siteId) {
-        List<EmployeResponse> results;
+        Page<EmployeResponse> page;
         if (siteId != null) {
-            results = employeService.findBySiteId(siteId).stream().map(EmployeResponse::from).toList();
+            page = employeService.findBySiteId(siteId, PageRequest.of(0, 1000)).map(EmployeResponse::from);
         } else {
-            results = employeService.findAll().stream().map(EmployeResponse::from).toList();
+            page = employeService.findAll(PageRequest.of(0, 1000)).map(EmployeResponse::from);
         }
-        if (results.size() > 1000) results = results.subList(0, 1000);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.ok(page.getContent());
     }
 
     @GetMapping("/{id}")

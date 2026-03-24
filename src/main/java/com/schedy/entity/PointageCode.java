@@ -21,8 +21,18 @@ public class PointageCode {
     @Column(nullable = false, unique = true)
     private String code;
 
+    /**
+     * Raw PIN — only visible to authenticated admin/managers via PointageCodeDto.
+     * Never exposed on public endpoints (KioskPointageCodeResponse excludes it).
+     */
     @Column(nullable = false)
     private String pin;
+
+    /**
+     * SHA-256 hash of the PIN for O(1) indexed lookup.
+     * Used by validateAndResolve() to find codes by PIN without exposing the raw value in queries.
+     */
+    private String pinHash;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)

@@ -15,7 +15,7 @@ public record EmployeDto(
     @Size(max = 255) String email,
     LocalDate dateNaissance,
     LocalDate dateEmbauche,
-    @Size(max = 10) String pin,
+    @Size(min = 4, max = 10) String pin,
     String organisationId,
     List<DisponibilitePlage> disponibilites,
     List<String> siteIds

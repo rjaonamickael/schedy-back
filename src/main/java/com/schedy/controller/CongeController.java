@@ -6,6 +6,7 @@ import com.schedy.service.CongeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,9 +32,8 @@ public class CongeController {
 
     @GetMapping("/types/all")
     public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
-        List<TypeCongeResponse> results = congeService.findAllTypes().stream().map(TypeCongeResponse::from).toList();
-        if (results.size() > 1000) results = results.subList(0, 1000);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.ok(congeService.findAllTypes(PageRequest.of(0, 1000))
+                .map(TypeCongeResponse::from).getContent());
     }
 
     @GetMapping("/types/{id}")
@@ -69,9 +69,8 @@ public class CongeController {
 
     @GetMapping("/banques/all")
     public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
-        List<BanqueCongeResponse> results = congeService.findAllBanques().stream().map(BanqueCongeResponse::from).toList();
-        if (results.size() > 1000) results = results.subList(0, 1000);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.ok(congeService.findAllBanques(PageRequest.of(0, 1000))
+                .map(BanqueCongeResponse::from).getContent());
     }
 
     @GetMapping("/banques/{id}")
@@ -112,9 +111,8 @@ public class CongeController {
 
     @GetMapping("/demandes/all")
     public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
-        List<DemandeCongeResponse> results = congeService.findAllDemandes().stream().map(DemandeCongeResponse::from).toList();
-        if (results.size() > 1000) results = results.subList(0, 1000);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.ok(congeService.findAllDemandes(PageRequest.of(0, 1000))
+                .map(DemandeCongeResponse::from).getContent());
     }
 
     @GetMapping("/demandes/{id}")

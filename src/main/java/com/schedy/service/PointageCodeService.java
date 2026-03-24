@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -126,8 +129,8 @@ public class PointageCodeService {
             throw new ResponseStatusException(HttpStatus.GONE, "Code expire");
         }
 
-        // Try as PIN
-        Optional<PointageCode> byPin = pointageCodeRepository.findByPinAndActifTrue(codeOrPin);
+        // Try as PIN via SHA-256 hash lookup (B-M19)
+        Optional<PointageCode> byPin = pointageCodeRepository.findByPinHashAndActifTrue(sha256(codeOrPin));
         if (byPin.isPresent()) {
             PointageCode pc = byPin.get();
             if (pc.isValid()) {
@@ -173,6 +176,7 @@ public class PointageCodeService {
                 .siteId(siteId)
                 .code(code)
                 .pin(pin)
+                .pinHash(sha256(pin))
                 .frequence(frequence)
                 .validFrom(now)
                 .validTo(validTo)
@@ -260,5 +264,17 @@ public class PointageCodeService {
                 pc.getValidTo().toString(),
                 pc.isActif()
         );
+    }
+
+    private String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) hex.append(String.format("%02x", b));
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 }
