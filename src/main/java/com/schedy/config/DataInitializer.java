@@ -789,15 +789,20 @@ public class DataInitializer implements CommandLineRunner {
             log.info("SUPERADMIN already exists, skipping.");
             return;
         }
+        String saPassword = System.getenv("SUPERADMIN_PASSWORD");
+        if (saPassword == null || saPassword.isBlank()) {
+            saPassword = "ChangeMeOnFirstLogin1!";
+            log.warn("SUPERADMIN_PASSWORD env var not set — using default. CHANGE IT IMMEDIATELY.");
+        }
         User superAdmin = User.builder()
-                .email("superadmin@schedy.io")
-                .password(passwordEncoder.encode("SuperAdmin123!"))
+                .email(System.getenv("SUPERADMIN_EMAIL") != null ? System.getenv("SUPERADMIN_EMAIL") : "superadmin@schedy.io")
+                .password(passwordEncoder.encode(saPassword))
                 .role(User.UserRole.SUPERADMIN)
                 .organisationId(null)
                 .employeId(null)
                 .build();
         userRepository.save(superAdmin);
-        log.info("SUPERADMIN created: superadmin@schedy.io");
+        log.info("SUPERADMIN created: {}", superAdmin.getEmail());
     }
 
     // ========== BETA PROMO CODES ==========
