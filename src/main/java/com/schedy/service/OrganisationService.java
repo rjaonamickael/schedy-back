@@ -1,5 +1,6 @@
 package com.schedy.service;
 
+import com.schedy.config.TenantContext;
 import com.schedy.dto.OrganisationDto;
 import com.schedy.entity.Organisation;
 import com.schedy.repository.OrganisationRepository;
@@ -16,22 +17,33 @@ import java.util.List;
 public class OrganisationService {
 
     private final OrganisationRepository organisationRepository;
+    private final TenantContext tenantContext;
 
+    /**
+     * Returns only the caller's own organisation (B-M17).
+     * In a multi-tenant SaaS, an ADMIN must not see other tenants' organisations.
+     */
     @Transactional(readOnly = true)
     public List<Organisation> findAll() {
-        return organisationRepository.findAll();
+        String orgId = tenantContext.requireOrganisationId();
+        return organisationRepository.findById(orgId).map(List::of).orElse(List.of());
     }
 
     @Transactional(readOnly = true)
     public Organisation findById(String id) {
+        // B-M17: Ensure caller can only access their own organisation
+        String orgId = tenantContext.requireOrganisationId();
+        if (!orgId.equals(id)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acces refuse");
+        }
         return organisationRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organisation non trouvée"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organisation non trouvee"));
     }
 
     @Transactional
     public Organisation create(OrganisationDto dto) {
         if (organisationRepository.existsByNom(dto.nom())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Une organisation avec ce nom existe déjà");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Une organisation avec ce nom existe deja");
         }
         Organisation organisation = Organisation.builder()
                 .nom(dto.nom())
@@ -44,7 +56,7 @@ public class OrganisationService {
 
     @Transactional
     public Organisation update(String id, OrganisationDto dto) {
-        Organisation organisation = findById(id);
+        Organisation organisation = findById(id); // findById already enforces tenant scope
         organisation.setNom(dto.nom());
         organisation.setDomaine(dto.domaine());
         organisation.setAdresse(dto.adresse());
@@ -54,9 +66,8 @@ public class OrganisationService {
 
     @Transactional
     public void delete(String id) {
-        if (!organisationRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Organisation non trouvée");
-        }
+        // B-M17: Tenant scope — findById enforces the caller owns this org
+        findById(id);
         organisationRepository.deleteById(id);
     }
 }

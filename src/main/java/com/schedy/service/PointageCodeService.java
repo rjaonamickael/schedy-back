@@ -2,11 +2,12 @@ package com.schedy.service;
 
 import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageCodeDto;
+import com.schedy.dto.response.KioskPointageCodeResponse;
 import com.schedy.entity.PointageCode;
 import com.schedy.entity.PointageCode.FrequenceRotation;
-import com.schedy.entity.Site;
+import com.schedy.exception.BusinessRuleException;
+import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
-import com.schedy.repository.SiteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 @Service
@@ -24,7 +26,7 @@ import java.util.Optional;
 public class PointageCodeService {
 
     private final PointageCodeRepository pointageCodeRepository;
-    private final SiteRepository siteRepository;
+    private final EmployeRepository employeRepository;
     private final TenantContext tenantContext;
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -32,16 +34,19 @@ public class PointageCodeService {
 
     // ---- Authenticated methods (use TenantContext) ----
 
-    @Transactional
+    /**
+     * Returns the active pointage code for a site, or null if none exists.
+     * Does NOT auto-create — GET endpoints must not have side effects (B-H21).
+     * Use getOrCreateForSite() or regenerateNow() to create codes explicitly.
+     */
+    @Transactional(readOnly = true)
     public PointageCodeDto getActiveForSite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrueAndOrganisationId(siteId, orgId);
         if (existing.isPresent() && existing.get().isValid()) {
             return toDto(existing.get());
         }
-        // Auto-create a code if none exists
-        log.info("Auto-creating pointage code for site: {} (org: {})", siteId, orgId);
-        return toDto(generateNewCode(siteId, FrequenceRotation.QUOTIDIEN, orgId));
+        return null;
     }
 
     @Transactional
@@ -73,27 +78,16 @@ public class PointageCodeService {
 
     // ---- Public methods (no TenantContext - kiosk/validation endpoints) ----
 
-    @Transactional
-    public PointageCodeDto getActiveForSitePublic(String siteId) {
+    /**
+     * Public kiosk endpoint: returns the active code for a site if one exists and is valid.
+     * Never creates or regenerates codes — that is strictly an authenticated operation.
+     * Returns KioskPointageCodeResponse (no PIN) to prevent PIN exposure on public endpoint.
+     */
+    @Transactional(readOnly = true)
+    public KioskPointageCodeResponse getActiveForSitePublic(String siteId) {
         Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrue(siteId);
-        if (existing.isPresent()) {
-            PointageCode pc = existing.get();
-            if (pc.isValid()) {
-                return toDto(pc);
-            }
-            // Code expired -- deactivate it and auto-regenerate with the same frequency
-            String orgId = pc.getOrganisationId();
-            FrequenceRotation freq = pc.getFrequence();
-            pc.setActif(false);
-            pointageCodeRepository.save(pc);
-            log.info("Auto-deactivated expired pointage code for site: {}", siteId);
-            return toDto(generateNewCode(siteId, freq, orgId));
-        }
-        // No code ever existed -- auto-create one by resolving the organisation from the site
-        Optional<Site> site = siteRepository.findById(siteId);
-        if (site.isPresent() && site.get().getOrganisationId() != null) {
-            log.info("Auto-creating first pointage code for site: {}", siteId);
-            return toDto(generateNewCode(siteId, FrequenceRotation.QUOTIDIEN, site.get().getOrganisationId()));
+        if (existing.isPresent() && existing.get().isValid()) {
+            return toKioskDto(existing.get());
         }
         return null;
     }
@@ -110,14 +104,24 @@ public class PointageCodeService {
         return toDto(generateNewCode(siteId, frequence, organisationId));
     }
 
+    /**
+     * Result of code validation: siteId + organisationId in a single DB read (B-M18).
+     */
+    public record CodeValidationResult(String siteId, String organisationId) {}
+
+    /**
+     * Single atomic method that validates the code/PIN and returns both siteId and organisationId.
+     * Eliminates the TOCTOU between resolveOrganisationIdFromCode and validateCode (B-M18).
+     * Reduces 4 DB round-trips to at most 2.
+     */
     @Transactional(readOnly = true)
-    public String validateCode(String codeOrPin) {
+    public CodeValidationResult validateAndResolve(String codeOrPin) {
         // Try as code first
         Optional<PointageCode> byCode = pointageCodeRepository.findByCodeAndActifTrue(codeOrPin);
         if (byCode.isPresent()) {
             PointageCode pc = byCode.get();
             if (pc.isValid()) {
-                return pc.getSiteId();
+                return new CodeValidationResult(pc.getSiteId(), pc.getOrganisationId());
             }
             throw new ResponseStatusException(HttpStatus.GONE, "Code expire");
         }
@@ -127,7 +131,7 @@ public class PointageCodeService {
         if (byPin.isPresent()) {
             PointageCode pc = byPin.get();
             if (pc.isValid()) {
-                return pc.getSiteId();
+                return new CodeValidationResult(pc.getSiteId(), pc.getOrganisationId());
             }
             throw new ResponseStatusException(HttpStatus.GONE, "Code expire");
         }
@@ -136,20 +140,16 @@ public class PointageCodeService {
     }
 
     /**
-     * Resolves the organisationId for a given site via the PointageCode.
-     * Used by the public kiosk validation flow to derive the org from the site.
+     * Verifies that the given employeId belongs to the given organisation (B-H17).
+     * Prevents an attacker with a valid code from clocking in for employees of other orgs.
      */
     @Transactional(readOnly = true)
-    public String resolveOrganisationIdFromCode(String codeOrPin) {
-        Optional<PointageCode> byCode = pointageCodeRepository.findByCodeAndActifTrue(codeOrPin);
-        if (byCode.isPresent() && byCode.get().isValid()) {
-            return byCode.get().getOrganisationId();
+    public void verifyEmployeBelongsToOrganisation(String employeId, String organisationId) {
+        if (organisationId == null) {
+            throw new BusinessRuleException("Organisation non resolvable depuis le code");
         }
-        Optional<PointageCode> byPin = pointageCodeRepository.findByPinAndActifTrue(codeOrPin);
-        if (byPin.isPresent() && byPin.get().isValid()) {
-            return byPin.get().getOrganisationId();
-        }
-        return null;
+        employeRepository.findByIdAndOrganisationId(employeId, organisationId)
+                .orElseThrow(() -> new BusinessRuleException("Employe non trouve dans cette organisation"));
     }
 
     // ---- Internal helpers ----
@@ -163,8 +163,8 @@ public class PointageCodeService {
                     log.info("Deactivated old pointage code for site: {}", siteId);
                 });
 
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime validTo = calculateValidTo(now, frequence);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime validTo = calculateValidTo(now, frequence);
 
         String code = generateUniqueCode();
         String pin = generateUniquePin();
@@ -185,7 +185,7 @@ public class PointageCodeService {
         return pointageCode;
     }
 
-    private LocalDateTime calculateValidTo(LocalDateTime from, FrequenceRotation frequence) {
+    private OffsetDateTime calculateValidTo(OffsetDateTime from, FrequenceRotation frequence) {
         return switch (frequence) {
             case QUOTIDIEN -> from.plusHours(24);
             case HEBDOMADAIRE -> from.plusDays(7);
@@ -244,6 +244,17 @@ public class PointageCodeService {
                 pc.getSiteId(),
                 pc.getCode(),
                 pc.getPin(),
+                pc.getFrequence().name(),
+                pc.getValidFrom().toString(),
+                pc.getValidTo().toString(),
+                pc.isActif()
+        );
+    }
+
+    private KioskPointageCodeResponse toKioskDto(PointageCode pc) {
+        return new KioskPointageCodeResponse(
+                pc.getSiteId(),
+                pc.getCode(),
                 pc.getFrequence().name(),
                 pc.getValidFrom().toString(),
                 pc.getValidTo().toString(),

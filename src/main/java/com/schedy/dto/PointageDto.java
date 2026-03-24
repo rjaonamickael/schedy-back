@@ -1,12 +1,12 @@
 package com.schedy.dto;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record PointageDto(
     String id,
     String employeId,
     String type,
-    LocalDateTime horodatage,
+    OffsetDateTime horodatage,
     String methode,
     String statut,
     String anomalie,

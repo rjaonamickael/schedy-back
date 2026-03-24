@@ -31,7 +31,9 @@ public class CongeController {
 
     @GetMapping("/types/all")
     public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
-        return ResponseEntity.ok(congeService.findAllTypes().stream().map(TypeCongeResponse::from).toList());
+        List<TypeCongeResponse> results = congeService.findAllTypes().stream().map(TypeCongeResponse::from).toList();
+        if (results.size() > 1000) results = results.subList(0, 1000);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/types/{id}")
@@ -67,7 +69,9 @@ public class CongeController {
 
     @GetMapping("/banques/all")
     public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
-        return ResponseEntity.ok(congeService.findAllBanques().stream().map(BanqueCongeResponse::from).toList());
+        List<BanqueCongeResponse> results = congeService.findAllBanques().stream().map(BanqueCongeResponse::from).toList();
+        if (results.size() > 1000) results = results.subList(0, 1000);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/banques/{id}")
@@ -108,7 +112,9 @@ public class CongeController {
 
     @GetMapping("/demandes/all")
     public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
-        return ResponseEntity.ok(congeService.findAllDemandes().stream().map(DemandeCongeResponse::from).toList());
+        List<DemandeCongeResponse> results = congeService.findAllDemandes().stream().map(DemandeCongeResponse::from).toList();
+        if (results.size() > 1000) results = results.subList(0, 1000);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/demandes/{id}")
@@ -147,7 +153,7 @@ public class CongeController {
     }
 
     @DeleteMapping("/demandes/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> deleteDemande(@PathVariable String id) {
         congeService.deleteDemande(id);
         return ResponseEntity.noContent().build();

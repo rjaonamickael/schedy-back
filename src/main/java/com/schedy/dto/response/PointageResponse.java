@@ -5,13 +5,13 @@ import com.schedy.entity.Pointage;
 import com.schedy.entity.StatutPointage;
 import com.schedy.entity.TypePointage;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public record PointageResponse(
         String id,
         String employeId,
         TypePointage type,
-        LocalDateTime horodatage,
+        OffsetDateTime horodatage,
         MethodePointage methode,
         StatutPointage statut,
         String anomalie,

@@ -97,7 +97,10 @@ public class PlanningController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<AutoAffectationResponse> autoAffecter(@Valid @RequestBody AutoAffectationRequest request) {
         var result = autoAffectationService.autoAffecter(request.semaine(), request.siteId());
-        return ResponseEntity.ok(new AutoAffectationResponse(result.totalAffectes(), result.creneaux()));
+        List<CreneauAssigneResponse> creneauxDto = result.creneaux().stream()
+                .map(CreneauAssigneResponse::from)
+                .toList();
+        return ResponseEntity.ok(new AutoAffectationResponse(result.totalAffectes(), creneauxDto));
     }
 
     @DeleteMapping("/semaine/{semaine}")

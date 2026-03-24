@@ -6,11 +6,24 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface BanqueCongeRepository extends JpaRepository<BanqueConge, String> {
+
+    /**
+     * Pessimistic write lock for quota check + update in a single transaction.
+     * Prevents TOCTOU race condition on concurrent leave requests.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM BanqueConge b WHERE b.employeId = :employeId AND b.typeCongeId = :typeCongeId AND b.organisationId = :orgId")
+    Optional<BanqueConge> findForUpdate(@Param("employeId") String employeId, @Param("typeCongeId") String typeCongeId, @Param("orgId") String orgId);
     List<BanqueConge> findByEmployeId(String employeId);
     List<BanqueConge> findByTypeCongeId(String typeCongeId);
     Optional<BanqueConge> findByEmployeIdAndTypeCongeId(String employeId, String typeCongeId);

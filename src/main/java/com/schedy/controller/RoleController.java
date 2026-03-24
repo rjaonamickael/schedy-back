@@ -50,7 +50,7 @@ public class RoleController {
 
     @PatchMapping("/reorder")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<List<RoleResponse>> reorder(@RequestBody List<RoleDto> roles) {
+    public ResponseEntity<List<RoleResponse>> reorder(@Valid @RequestBody List<@Valid RoleDto> roles) {
         return ResponseEntity.ok(roleService.reorder(roles).stream().map(RoleResponse::from).toList());
     }
 

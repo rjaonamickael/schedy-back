@@ -15,11 +15,13 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         String origins = System.getenv("CORS_ALLOWED_ORIGINS");
-        if (origins != null) {
+        if (origins != null && !origins.isBlank()) {
+            // Production / custom: use explicitly configured origins
+            // For LAN mobile testing, set CORS_ALLOWED_ORIGINS=http://localhost:4200,http://192.168.*:*,http://10.*:*
             config.setAllowedOriginPatterns(List.of(origins.split(",")));
         } else {
-            // Dev: allow localhost + LAN IPs for mobile testing
-            config.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*", "http://192.168.*:*", "http://10.*:*"));
+            // Secure default: only Angular dev server on localhost
+            config.setAllowedOriginPatterns(List.of("http://localhost:4200"));
         }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

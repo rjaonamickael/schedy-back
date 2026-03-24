@@ -1,7 +1,9 @@
 package com.schedy.dto;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
@@ -13,9 +15,9 @@ public record DemandeCongeDto(
     @NotNull LocalDate dateFin,
     Double heureDebut,
     Double heureFin,
-    double duree,
+    @Min(0) double duree,
     String statut,
-    String motif,
-    String noteApprobation,
+    @Size(max = 500) String motif,
+    @Size(max = 500) String noteApprobation,
     String organisationId
 ) {}

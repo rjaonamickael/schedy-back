@@ -18,6 +18,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -27,6 +30,18 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+
+    // B-H16: Per-account lockout after repeated failed login attempts.
+    // 5 failures within 15 minutes = account locked for 15 minutes.
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final long LOCKOUT_DURATION_MS = 15 * 60 * 1000L; // 15 minutes
+    private final Map<String, FailedLoginTracker> failedLogins = new ConcurrentHashMap<>();
+
+    private record FailedLoginTracker(int attempts, Instant firstAttempt, Instant lockedUntil) {
+        boolean isLocked() {
+            return lockedUntil != null && Instant.now().isBefore(lockedUntil);
+        }
+    }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -46,12 +61,15 @@ public class AuthService {
             throw new IllegalArgumentException("L'inscription en tant qu'" + role + " n'est pas autorisée. Contactez un administrateur.");
         }
 
+        // Self-registration must NOT allow joining an arbitrary organisation.
+        // Only admins can assign users to organisations (prevents multi-tenant data leak).
+        // organisationId and employeId from the request are ignored for self-registration.
         User user = User.builder()
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
                 .role(role)
-                .employeId(request.employeId())
-                .organisationId(request.organisationId())
+                .employeId(null)
+                .organisationId(null)
                 .build();
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
@@ -66,21 +84,60 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(AuthRequest request) {
-        User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Aucun compte associé à cette adresse e-mail"));
+        String email = request.email().toLowerCase().trim();
 
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            log.warn("Failed login attempt for: {}", request.email());
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Mot de passe incorrect");
+        // B-H16: Check per-account lockout before attempting authentication
+        FailedLoginTracker tracker = failedLogins.get(email);
+        if (tracker != null && tracker.isLocked()) {
+            log.warn("Locked account login attempt: {}", email);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Compte temporairement verrouille apres trop de tentatives. Reessayez dans quelques minutes.");
         }
+
+        // B-C8: Generic 401 for both unknown email and wrong password to prevent user enumeration.
+        // Timing: passwordEncoder.matches() is called even on missing user to prevent timing side-channel.
+        User user = userRepository.findByEmail(email).orElse(null);
+        boolean authFailed = false;
+
+        if (user == null) {
+            passwordEncoder.matches(request.password(), "$2a$12$000000000000000000000uGbLI4Ryhzb3WU65Hm0n6/UlBfzLHPXi");
+            authFailed = true;
+        } else if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            authFailed = true;
+        }
+
+        if (authFailed) {
+            recordFailedAttempt(email);
+            log.warn("Failed login attempt for: {}", email);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Identifiant ou mot de passe incorrect");
+        }
+
+        // Successful login: clear failed attempts
+        failedLogins.remove(email);
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
         String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
         user.setRefreshToken(hashToken(refreshToken));
         userRepository.save(user);
-        log.info("User logged in: {}", request.email());
+        log.info("User logged in: {}", user.getEmail());
 
         return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId());
+    }
+
+    private void recordFailedAttempt(String email) {
+        failedLogins.compute(email, (key, existing) -> {
+            Instant now = Instant.now();
+            if (existing == null || now.toEpochMilli() - existing.firstAttempt().toEpochMilli() > LOCKOUT_DURATION_MS) {
+                // First failure or window expired: start fresh
+                return new FailedLoginTracker(1, now, null);
+            }
+            int newCount = existing.attempts() + 1;
+            if (newCount >= MAX_FAILED_ATTEMPTS) {
+                log.warn("Account locked due to {} failed attempts: {}", newCount, email);
+                return new FailedLoginTracker(newCount, existing.firstAttempt(), now.plusMillis(LOCKOUT_DURATION_MS));
+            }
+            return new FailedLoginTracker(newCount, existing.firstAttempt(), null);
+        });
     }
 
     @Transactional

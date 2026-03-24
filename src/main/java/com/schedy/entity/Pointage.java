@@ -3,7 +3,7 @@ package com.schedy.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "pointage", indexes = {
@@ -25,8 +25,8 @@ public class Pointage {
     @Column(nullable = false)
     private TypePointage type;
 
-    @Column(nullable = false)
-    private LocalDateTime horodatage;
+    @Column(nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
+    private OffsetDateTime horodatage;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

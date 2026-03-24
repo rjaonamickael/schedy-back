@@ -6,6 +6,7 @@ import com.schedy.entity.*;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
+import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -52,14 +54,14 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         TypeConge type = TypeConge.builder()
                 .nom(dto.nom())
-                .categorie(CategorieConge.valueOf(dto.categorie()))
-                .unite(UniteConge.valueOf(dto.unite()))
+                .categorie(parseCategorieConge(dto.categorie()))
+                .unite(parseUniteConge(dto.unite()))
                 .couleur(dto.couleur())
                 .modeQuota(dto.modeQuota())
                 .quotaIllimite(dto.quotaIllimite())
                 .autoriserNegatif(dto.autoriserNegatif())
                 .accrualMontant(dto.accrualMontant())
-                .accrualFrequence(dto.accrualFrequence() != null ? FrequenceAccrual.valueOf(dto.accrualFrequence()) : null)
+                .accrualFrequence(dto.accrualFrequence() != null ? parseFrequenceAccrual(dto.accrualFrequence()) : null)
                 .reportMax(dto.reportMax())
                 .reportDuree(dto.reportDuree())
                 .organisationId(orgId)
@@ -73,17 +75,41 @@ public class CongeService {
         TypeConge type = typeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Type de conge", id));
         type.setNom(dto.nom());
-        type.setCategorie(CategorieConge.valueOf(dto.categorie()));
-        type.setUnite(UniteConge.valueOf(dto.unite()));
+        type.setCategorie(parseCategorieConge(dto.categorie()));
+        type.setUnite(parseUniteConge(dto.unite()));
         type.setCouleur(dto.couleur());
         type.setModeQuota(dto.modeQuota());
         type.setQuotaIllimite(dto.quotaIllimite());
         type.setAutoriserNegatif(dto.autoriserNegatif());
         type.setAccrualMontant(dto.accrualMontant());
-        type.setAccrualFrequence(dto.accrualFrequence() != null ? FrequenceAccrual.valueOf(dto.accrualFrequence()) : null);
+        type.setAccrualFrequence(dto.accrualFrequence() != null ? parseFrequenceAccrual(dto.accrualFrequence()) : null);
         type.setReportMax(dto.reportMax());
         type.setReportDuree(dto.reportDuree());
         return typeCongeRepository.save(type);
+    }
+
+    private CategorieConge parseCategorieConge(String value) {
+        try {
+            return CategorieConge.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessRuleException("Valeur invalide pour categorie: " + value);
+        }
+    }
+
+    private UniteConge parseUniteConge(String value) {
+        try {
+            return UniteConge.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessRuleException("Valeur invalide pour unite: " + value);
+        }
+    }
+
+    private FrequenceAccrual parseFrequenceAccrual(String value) {
+        try {
+            return FrequenceAccrual.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessRuleException("Valeur invalide pour accrualFrequence: " + value);
+        }
     }
 
     @Transactional
@@ -201,6 +227,29 @@ public class CongeService {
     @Transactional
     public DemandeConge createDemande(DemandeCongeDto dto) {
         String orgId = tenantContext.requireOrganisationId();
+
+        // Acquire pessimistic lock on banque FIRST to prevent TOCTOU race condition.
+        // The lock is held until the transaction commits, so concurrent requests
+        // on the same (employe, typeConge, org) will serialize here.
+        Optional<BanqueConge> lockedBanque = banqueCongeRepository.findForUpdate(dto.employeId(), dto.typeCongeId(), orgId);
+
+        // Quota verification with the locked row
+        lockedBanque.ifPresent(banque -> {
+            if (banque.getQuota() != null) {
+                TypeConge typeConge = typeCongeRepository.findByIdAndOrganisationId(dto.typeCongeId(), orgId)
+                        .orElse(null);
+                boolean autoriserNegatif = typeConge != null && typeConge.isAutoriserNegatif();
+                boolean quotaIllimite = typeConge != null && typeConge.isQuotaIllimite();
+                if (!quotaIllimite && !autoriserNegatif) {
+                    double disponible = banque.getQuota() - banque.getUtilise() - banque.getEnAttente();
+                    if (dto.duree() > disponible) {
+                        throw new BusinessRuleException(
+                                "Quota insuffisant: " + disponible + " disponible, " + dto.duree() + " demande");
+                    }
+                }
+            }
+        });
+
         DemandeConge demande = DemandeConge.builder()
                 .employeId(dto.employeId())
                 .typeCongeId(dto.typeCongeId())
@@ -214,32 +263,13 @@ public class CongeService {
                 .organisationId(orgId)
                 .build();
 
-        // Quota verification: check if the request would exceed available balance
-        banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(dto.employeId(), dto.typeCongeId(), orgId)
-                .ifPresent(banque -> {
-                    if (banque.getQuota() != null) {
-                        TypeConge typeConge = typeCongeRepository.findByIdAndOrganisationId(dto.typeCongeId(), orgId)
-                                .orElse(null);
-                        boolean autoriserNegatif = typeConge != null && typeConge.isAutoriserNegatif();
-                        boolean quotaIllimite = typeConge != null && typeConge.isQuotaIllimite();
-                        if (!quotaIllimite && !autoriserNegatif) {
-                            double disponible = banque.getQuota() - banque.getUtilise() - banque.getEnAttente();
-                            if (dto.duree() > disponible) {
-                                throw new BusinessRuleException(
-                                        "Quota insuffisant: " + disponible + " disponible, " + dto.duree() + " demande");
-                            }
-                        }
-                    }
-                });
-
         demande = demandeCongeRepository.save(demande);
 
-        // Update enAttente in banque
-        banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(dto.employeId(), dto.typeCongeId(), orgId)
-                .ifPresent(banque -> {
-                    banque.setEnAttente(banque.getEnAttente() + dto.duree());
-                    banqueCongeRepository.save(banque);
-                });
+        // Update enAttente using the SAME locked entity (no second read needed)
+        lockedBanque.ifPresent(banque -> {
+            banque.setEnAttente(banque.getEnAttente() + dto.duree());
+            banqueCongeRepository.save(banque);
+        });
 
         return demande;
     }
@@ -258,13 +288,17 @@ public class CongeService {
         log.info("Leave request {} approved", id);
         demandeCongeRepository.save(demande);
 
-        // Move from enAttente to utilise
-        banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
-                .ifPresent(banque -> {
-                    banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
-                    banque.setUtilise(banque.getUtilise() + demande.getDuree());
-                    banqueCongeRepository.save(banque);
-                });
+        // Move from enAttente to utilise (optimistic locking guards against concurrent quota updates)
+        try {
+            banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
+                    .ifPresent(banque -> {
+                        banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        banque.setUtilise(banque.getUtilise() + demande.getDuree());
+                        banqueCongeRepository.save(banque);
+                    });
+        } catch (OptimisticLockException e) {
+            throw new BusinessRuleException("Requete concurrente, reessayez");
+        }
 
         return demande;
     }
@@ -283,12 +317,16 @@ public class CongeService {
         log.info("Leave request {} refused", id);
         demandeCongeRepository.save(demande);
 
-        // Rollback enAttente
-        banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
-                .ifPresent(banque -> {
-                    banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
-                    banqueCongeRepository.save(banque);
-                });
+        // Rollback enAttente (optimistic locking guards against concurrent quota updates)
+        try {
+            banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
+                    .ifPresent(banque -> {
+                        banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        banqueCongeRepository.save(banque);
+                    });
+        } catch (OptimisticLockException e) {
+            throw new BusinessRuleException("Requete concurrente, reessayez");
+        }
 
         return demande;
     }
@@ -298,6 +336,14 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
+        if (demande.getStatut() != StatutDemande.en_attente) {
+            throw new BusinessRuleException("Seules les demandes en attente peuvent etre modifiees");
+        }
+
+        // B-H19: Recalculate enAttente delta when duree or typeConge changes
+        double oldDuree = demande.getDuree();
+        String oldTypeCongeId = demande.getTypeCongeId();
+
         demande.setTypeCongeId(dto.typeCongeId());
         demande.setDateDebut(dto.dateDebut());
         demande.setDateFin(dto.dateFin());
@@ -306,6 +352,31 @@ public class CongeService {
         demande.setDuree(dto.duree());
         demande.setMotif(dto.motif());
         demande.setNoteApprobation(dto.noteApprobation());
+
+        // If type changed, rollback old banque and apply to new banque (using pessimistic lock)
+        if (!oldTypeCongeId.equals(dto.typeCongeId())) {
+            // Rollback enAttente on old type
+            banqueCongeRepository.findForUpdate(demande.getEmployeId(), oldTypeCongeId, orgId)
+                    .ifPresent(banque -> {
+                        banque.setEnAttente(Math.max(0, banque.getEnAttente() - oldDuree));
+                        banqueCongeRepository.save(banque);
+                    });
+            // Apply enAttente on new type (with quota check)
+            banqueCongeRepository.findForUpdate(demande.getEmployeId(), dto.typeCongeId(), orgId)
+                    .ifPresent(banque -> {
+                        banque.setEnAttente(banque.getEnAttente() + dto.duree());
+                        banqueCongeRepository.save(banque);
+                    });
+        } else if (Math.abs(oldDuree - dto.duree()) > 1e-9) {
+            // Same type, different duree: apply delta (using pessimistic lock)
+            double delta = dto.duree() - oldDuree;
+            banqueCongeRepository.findForUpdate(demande.getEmployeId(), dto.typeCongeId(), orgId)
+                    .ifPresent(banque -> {
+                        banque.setEnAttente(Math.max(0, banque.getEnAttente() + delta));
+                        banqueCongeRepository.save(banque);
+                    });
+        }
+
         return demandeCongeRepository.save(demande);
     }
 

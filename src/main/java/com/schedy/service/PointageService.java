@@ -15,8 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -50,16 +51,16 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findTodayAll() {
         String orgId = tenantContext.requireOrganisationId();
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
         return pointageRepository.findByOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(orgId, startOfDay, endOfDay);
     }
 
     @Transactional(readOnly = true)
     public List<Pointage> findTodayAllBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
         return pointageRepository.findBySiteIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(siteId, orgId, startOfDay, endOfDay);
     }
 
@@ -78,8 +79,8 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findTodayByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
         return pointageRepository.findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(
                 employeId, orgId, startOfDay, endOfDay);
     }
@@ -95,10 +96,10 @@ public class PointageService {
         String orgId = tenantContext.requireOrganisationId();
         Pointage pointage = pointageRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pointage", id));
-        if (dto.type() != null) pointage.setType(TypePointage.valueOf(dto.type()));
+        if (dto.type() != null) pointage.setType(parseTypePointage(dto.type()));
         if (dto.horodatage() != null) pointage.setHorodatage(dto.horodatage());
-        if (dto.methode() != null) pointage.setMethode(MethodePointage.valueOf(dto.methode()));
-        if (dto.statut() != null) pointage.setStatut(StatutPointage.valueOf(dto.statut()));
+        if (dto.methode() != null) pointage.setMethode(parseMethodePointage(dto.methode()));
+        if (dto.statut() != null) pointage.setStatut(parseStatutPointage(dto.statut()));
         pointage.setAnomalie(dto.anomalie());
         return pointageRepository.save(pointage);
     }
@@ -138,7 +139,7 @@ public class PointageService {
     private Pointage buildAndSavePointage(PointerRequest request, String orgId) {
         String employeId = request.employeId();
         String siteId = request.siteId();
-        LocalDateTime now = LocalDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         // Determine entry or exit based on last pointage for this site
         Optional<Pointage> lastPointage;
@@ -181,7 +182,7 @@ public class PointageService {
                 .employeId(employeId)
                 .type(type)
                 .horodatage(now)
-                .methode(MethodePointage.valueOf(request.methode()))
+                .methode(parseMethodePointage(request.methode()))
                 .siteId(siteId)
                 .organisationId(orgId)
                 .statut(statut)

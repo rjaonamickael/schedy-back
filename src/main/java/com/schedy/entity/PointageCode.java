@@ -3,7 +3,8 @@ package com.schedy.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "pointage_code")
@@ -27,11 +28,11 @@ public class PointageCode {
     @Enumerated(EnumType.STRING)
     private FrequenceRotation frequence;
 
-    @Column(nullable = false)
-    private LocalDateTime validFrom;
+    @Column(nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
+    private OffsetDateTime validFrom;
 
-    @Column(nullable = false)
-    private LocalDateTime validTo;
+    @Column(nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
+    private OffsetDateTime validTo;
 
     @Column(nullable = false)
     @Builder.Default
@@ -45,11 +46,11 @@ public class PointageCode {
     }
 
     public boolean isExpired() {
-        return LocalDateTime.now().isAfter(validTo);
+        return OffsetDateTime.now(ZoneOffset.UTC).isAfter(validTo);
     }
 
     public boolean isValid() {
-        LocalDateTime now = LocalDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         return actif && !now.isBefore(validFrom) && !now.isAfter(validTo);
     }
 }

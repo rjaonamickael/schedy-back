@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/employes")
@@ -33,10 +34,14 @@ public class EmployeController {
     @GetMapping("/all")
     public ResponseEntity<List<EmployeResponse>> findAll(
             @RequestParam(value = "siteId", required = false) String siteId) {
+        List<EmployeResponse> results;
         if (siteId != null) {
-            return ResponseEntity.ok(employeService.findBySiteId(siteId).stream().map(EmployeResponse::from).toList());
+            results = employeService.findBySiteId(siteId).stream().map(EmployeResponse::from).toList();
+        } else {
+            results = employeService.findAll().stream().map(EmployeResponse::from).toList();
         }
-        return ResponseEntity.ok(employeService.findAll().stream().map(EmployeResponse::from).toList());
+        if (results.size() > 1000) results = results.subList(0, 1000);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/{id}")
@@ -54,8 +59,13 @@ public class EmployeController {
         return ResponseEntity.ok(employeService.findBySiteId(siteId).stream().map(EmployeResponse::from).toList());
     }
 
-    @GetMapping("/pin/{pin}")
-    public ResponseEntity<EmployeResponse> findByPin(@PathVariable String pin) {
+    @PostMapping("/find-by-pin")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<EmployeResponse> findByPin(@RequestBody Map<String, String> body) {
+        String pin = body.get("pin");
+        if (pin == null || pin.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
         return employeService.findByPin(pin)
                 .map(EmployeResponse::from)
                 .map(ResponseEntity::ok)

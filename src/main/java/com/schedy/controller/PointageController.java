@@ -70,7 +70,7 @@ public class PointageController {
     }
 
     @PostMapping("/pointer")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<PointageResponse> pointer(@Valid @RequestBody PointerRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(PointageResponse.from(pointageService.pointer(request)));
     }

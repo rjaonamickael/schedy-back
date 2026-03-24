@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,7 +54,7 @@ public class GlobalExceptionHandler {
         });
 
         Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
         body.put("status", HttpStatus.BAD_REQUEST.value());
         body.put("error", "Validation échouée");
         body.put("details", errors);
@@ -73,7 +74,7 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, String message) {
         Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", LocalDateTime.now().toString());
+        body.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
         body.put("status", status.value());
         body.put("error", message);
         return ResponseEntity.status(status).body(body);
