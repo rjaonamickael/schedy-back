@@ -7,12 +7,15 @@ import com.schedy.dto.response.CreneauAssigneResponse;
 import com.schedy.service.AutoAffectationService;
 import com.schedy.service.PlanningService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +23,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/creneaux")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
+@Validated
 public class PlanningController {
 
     private final PlanningService planningService;
@@ -40,7 +45,8 @@ public class PlanningController {
     }
 
     @GetMapping("/semaine/{semaine}")
-    public ResponseEntity<List<CreneauAssigneResponse>> findBySemaine(@PathVariable String semaine,
+    public ResponseEntity<List<CreneauAssigneResponse>> findBySemaine(
+            @PathVariable @Pattern(regexp = "\\d{4}-W\\d{1,2}", message = "Format de semaine invalide, attendu: YYYY-Wnn") String semaine,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
             return ResponseEntity.ok(planningService.findBySemaineAndSite(semaine, siteId).stream().map(CreneauAssigneResponse::from).toList());
@@ -59,7 +65,8 @@ public class PlanningController {
 
     @GetMapping("/employe/{employeId}/semaine/{semaine}")
     public ResponseEntity<List<CreneauAssigneResponse>> findByEmployeIdAndSemaine(
-            @PathVariable String employeId, @PathVariable String semaine,
+            @PathVariable String employeId,
+            @PathVariable @Pattern(regexp = "\\d{4}-W\\d{1,2}", message = "Format de semaine invalide, attendu: YYYY-Wnn") String semaine,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
             return ResponseEntity.ok(planningService.findByEmployeIdAndSemaineAndSite(employeId, semaine, siteId).stream().map(CreneauAssigneResponse::from).toList());
@@ -75,7 +82,8 @@ public class PlanningController {
 
     @PostMapping("/batch")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<List<CreneauAssigneResponse>> createBatch(@Valid @RequestBody List<CreneauAssigneDto> dtos) {
+    public ResponseEntity<List<CreneauAssigneResponse>> createBatch(
+            @Valid @Size(max = 500, message = "Le batch ne peut pas depasser 500 creneaux") @RequestBody List<CreneauAssigneDto> dtos) {
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 planningService.createBatch(dtos).stream().map(CreneauAssigneResponse::from).toList());
     }
@@ -105,7 +113,8 @@ public class PlanningController {
 
     @DeleteMapping("/semaine/{semaine}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<Void> deleteBySemaine(@PathVariable String semaine,
+    public ResponseEntity<Void> deleteBySemaine(
+            @PathVariable @Pattern(regexp = "\\d{4}-W\\d{1,2}", message = "Format de semaine invalide, attendu: YYYY-Wnn") String semaine,
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {
             planningService.deleteBySemaineAndSite(semaine, siteId);

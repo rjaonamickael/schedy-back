@@ -6,11 +6,13 @@ import com.schedy.entity.*;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
-import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +28,7 @@ public class CongeService {
     private final BanqueCongeRepository banqueCongeRepository;
     private final DemandeCongeRepository demandeCongeRepository;
     private final JourFerieRepository jourFerieRepository;
+    private final UserRepository userRepository;
     private final TenantContext tenantContext;
 
     // ---- TypeConge ----
@@ -228,6 +231,21 @@ public class CongeService {
     public DemandeConge createDemande(DemandeCongeDto dto) {
         String orgId = tenantContext.requireOrganisationId();
 
+        // B-03: Ownership check — EMPLOYEE role may only submit demandes for themselves.
+        // ADMIN and MANAGER can submit on behalf of any employee.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"))) {
+            String callerEmail = auth.getName();
+            String callerEmployeId = userRepository.findByEmail(callerEmail)
+                    .map(u -> u.getEmployeId())
+                    .orElse(null);
+            if (callerEmployeId == null || !callerEmployeId.equals(dto.employeId())) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Un employe ne peut soumettre une demande que pour lui-meme");
+            }
+        }
+
         // Acquire pessimistic lock on banque FIRST to prevent TOCTOU race condition.
         // The lock is held until the transaction commits, so concurrent requests
         // on the same (employe, typeConge, org) will serialize here.
@@ -296,7 +314,8 @@ public class CongeService {
                         banque.setUtilise(banque.getUtilise() + demande.getDuree());
                         banqueCongeRepository.save(banque);
                     });
-        } catch (OptimisticLockException e) {
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // B-18: Use Spring's wrapper rather than JPA's raw OptimisticLockException
             throw new BusinessRuleException("Requete concurrente, reessayez");
         }
 
@@ -324,7 +343,8 @@ public class CongeService {
                         banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
                         banqueCongeRepository.save(banque);
                     });
-        } catch (OptimisticLockException e) {
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // B-18: Use Spring's wrapper rather than JPA's raw OptimisticLockException
             throw new BusinessRuleException("Requete concurrente, reessayez");
         }
 
@@ -424,6 +444,7 @@ public class CongeService {
                 .nom(dto.nom())
                 .date(dto.date())
                 .recurrent(dto.recurrent())
+                .siteId(dto.siteId())
                 .organisationId(orgId)
                 .build();
         return jourFerieRepository.save(ferie);
@@ -437,6 +458,7 @@ public class CongeService {
         ferie.setNom(dto.nom());
         ferie.setDate(dto.date());
         ferie.setRecurrent(dto.recurrent());
+        ferie.setSiteId(dto.siteId());
         return jourFerieRepository.save(ferie);
     }
 

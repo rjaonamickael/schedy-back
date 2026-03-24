@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- ── Common pattern ─────────────────────────────────────────────────── -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <!-- ── Dev profile: console at WARN, app code at INFO ──────────────── -->
+    <springProfile name="dev">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- App code at INFO — only our logs + errors -->
+        <logger name="com.schedy" level="INFO"/>
+        <!-- Silence framework noise -->
+        <logger name="org.hibernate"          level="WARN"/>
+        <logger name="org.hibernate.SQL"      level="WARN"/>
+        <logger name="org.springframework"    level="WARN"/>
+        <logger name="com.zaxxer.hikari"      level="WARN"/>
+    </springProfile>
+
+    <!-- ── Prod profile: console WARN + rolling file ──────────────────────── -->
+    <springProfile name="prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>WARN</level>
+            </filter>
+        </appender>
+
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>logs/schedy.log</file>
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!-- Daily rollover, keep 30 days -->
+                <fileNamePattern>logs/schedy.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy
+                        class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>10MB</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>500MB</totalSizeCap>
+            </rollingPolicy>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+
+        <!-- Keep application logs at INFO in prod -->
+        <logger name="com.schedy" level="INFO"/>
+        <!-- Silence noisy framework logs in prod -->
+        <logger name="org.hibernate"          level="WARN"/>
+        <logger name="org.springframework"    level="WARN"/>
+    </springProfile>
+
+    <!-- ── Default (no profile active): same as dev ───────────────────────── -->
+    <springProfile name="!dev &amp; !prod">
+        <appender name="CONSOLE_DEFAULT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_DEFAULT"/>
+        </root>
+    </springProfile>
+
+</configuration>

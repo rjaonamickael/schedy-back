@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.schedy.exception.BusinessRuleException;
+
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.WeekFields;
@@ -98,9 +100,7 @@ public class AutoAffectationService {
     }
 
     private List<DemandeConge> loadCongesApprouves(String orgId) {
-        return demandeCongeRepository.findByOrganisationId(orgId).stream()
-                .filter(d -> "approuve".equals(d.getStatut()))
-                .toList();
+        return demandeCongeRepository.findByOrganisationIdAndStatut(orgId, StatutDemande.approuve);
     }
 
     private Parametres loadParametres(String orgId, String siteId) {
@@ -120,12 +120,22 @@ public class AutoAffectationService {
     // ── Week date utilities ────────────────────────────────────
 
     private LocalDate getLundiDeSemaine(String semaine) {
-        String[] parts = semaine.split("-W");
-        int year = Integer.parseInt(parts[0]);
-        int week = Integer.parseInt(parts[1]);
-        return LocalDate.of(year, 1, 4)
-                .with(WeekFields.ISO.weekOfWeekBasedYear(), week)
-                .with(DayOfWeek.MONDAY);
+        if (semaine == null || !semaine.matches("\\d{4}-W\\d{1,2}")) {
+            throw new BusinessRuleException("Format semaine invalide: attendu 'YYYY-WNN', recu: " + semaine);
+        }
+        try {
+            String[] parts = semaine.split("-W");
+            int year = Integer.parseInt(parts[0]);
+            int week = Integer.parseInt(parts[1]);
+            if (week < 1 || week > 53) {
+                throw new BusinessRuleException("Numero de semaine invalide: " + week);
+            }
+            return LocalDate.of(year, 1, 4)
+                    .with(WeekFields.ISO.weekOfWeekBasedYear(), week)
+                    .with(DayOfWeek.MONDAY);
+        } catch (NumberFormatException e) {
+            throw new BusinessRuleException("Format semaine invalide: " + semaine);
+        }
     }
 
     // ── Result record ──────────────────────────────────────────

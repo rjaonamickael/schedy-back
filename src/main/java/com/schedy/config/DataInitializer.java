@@ -41,6 +41,8 @@ public class DataInitializer implements CommandLineRunner {
     private final PointageCodeRepository pointageCodeRepository;
     private final PointageCodeService pointageCodeService;
     private final PasswordEncoder passwordEncoder;
+    private final SubscriptionRepository subscriptionRepository;
+    private final PromoCodeRepository promoCodeRepository;
 
     @Override
     @Transactional
@@ -100,6 +102,12 @@ public class DataInitializer implements CommandLineRunner {
 
         // 15. Pointage codes
         createPointageCodes(entreprise, siegeEntreprise, company, centreville, banlieue, zoneIndustrielle);
+
+        // 16. SUPERADMIN platform user
+        createSuperAdmin();
+
+        // 17. Beta promo codes
+        createBetaPromoCodes();
 
         log.info("Seed data initialized successfully!");
     }
@@ -769,6 +777,60 @@ public class DataInitializer implements CommandLineRunner {
                 pointageCodeService.createForSiteInternal(site.getId(), PointageCode.FrequenceRotation.QUOTIDIEN, company.getId());
                 log.info("Pointage code created for site: {}", site.getNom());
             }
+        }
+    }
+
+    // ========== SUPERADMIN ==========
+
+    private void createSuperAdmin() {
+        boolean exists = userRepository.findAll().stream()
+                .anyMatch(u -> u.getRole() == User.UserRole.SUPERADMIN);
+        if (exists) {
+            log.info("SUPERADMIN already exists, skipping.");
+            return;
+        }
+        User superAdmin = User.builder()
+                .email("superadmin@schedy.io")
+                .password(passwordEncoder.encode("SuperAdmin123!"))
+                .role(User.UserRole.SUPERADMIN)
+                .organisationId(null)
+                .employeId(null)
+                .build();
+        userRepository.save(superAdmin);
+        log.info("SUPERADMIN created: superadmin@schedy.io");
+    }
+
+    // ========== BETA PROMO CODES ==========
+
+    private void createBetaPromoCodes() {
+        if (promoCodeRepository.count() > 0) {
+            log.info("Promo codes already exist, skipping.");
+            return;
+        }
+
+        createPromoCode("BETA2026",  "100% de réduction pendant 3 mois — plan PRO",   100, 3,  "PRO",  50);
+        createPromoCode("EARLYBIRD", "50% de réduction pendant 6 mois",                50,  6,  null,   100);
+        createPromoCode("MADAGASCAR","100% de réduction pendant 12 mois — plan PRO",  100, 12, "PRO",  20);
+
+        log.info("Beta promo codes created: BETA2026, EARLYBIRD, MADAGASCAR");
+    }
+
+    private void createPromoCode(String code, String description,
+                                 int discountPercent, int discountMonths,
+                                 String planOverride, int maxUses) {
+        if (!promoCodeRepository.existsByCode(code)) {
+            PromoCode promo = PromoCode.builder()
+                    .code(code)
+                    .description(description)
+                    .discountPercent(discountPercent)
+                    .discountMonths(discountMonths)
+                    .planOverride(planOverride)
+                    .maxUses(maxUses)
+                    .currentUses(0)
+                    .active(true)
+                    .validFrom(OffsetDateTime.now())
+                    .build();
+            promoCodeRepository.save(promo);
         }
     }
 }

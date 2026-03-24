@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -23,15 +25,20 @@ public class ParametresService {
         String orgId = tenantContext.requireOrganisationId();
         return parametresRepository.findBySiteIdIsNullAndOrganisationId(orgId)
                 .orElseGet(() -> {
-                    Parametres defaults = Parametres.builder()
-                            .heureDebut(6)
-                            .heureFin(22)
-                            .joursActifs(List.of(1, 2, 3, 4, 5))
-                            .premierJour(1)
-                            .dureeMinAffectation(1.0)
-                            .organisationId(orgId)
-                            .build();
-                    return parametresRepository.save(defaults);
+                    try {
+                        Parametres defaults = Parametres.builder()
+                                .heureDebut(6)
+                                .heureFin(22)
+                                .joursActifs(List.of(1, 2, 3, 4, 5))
+                                .premierJour(1)
+                                .dureeMinAffectation(1.0)
+                                .organisationId(orgId)
+                                .build();
+                        return parametresRepository.save(defaults);
+                    } catch (DataIntegrityViolationException e) {
+                        // Race condition: another request created the row — read it
+                        return parametresRepository.findBySiteIdIsNullAndOrganisationId(orgId).orElseThrow();
+                    }
                 });
     }
 
@@ -45,22 +52,7 @@ public class ParametresService {
     @Transactional
     public Parametres update(ParametresDto dto) {
         Parametres parametres = get();
-        parametres.setHeureDebut(dto.heureDebut());
-        parametres.setHeureFin(dto.heureFin());
-        if (dto.joursActifs() != null) {
-            parametres.getJoursActifs().clear();
-            parametres.getJoursActifs().addAll(dto.joursActifs());
-        }
-        parametres.setPremierJour(dto.premierJour());
-        parametres.setDureeMinAffectation(dto.dureeMinAffectation());
-        parametres.setHeuresMaxSemaine(dto.heuresMaxSemaine());
-        parametres.setTaillePolice(dto.taillePolice());
-        parametres.setPlanningVue(dto.planningVue());
-        parametres.setPlanningGranularite(dto.planningGranularite());
-        if (dto.reglesAffectation() != null) {
-            parametres.getReglesAffectation().clear();
-            parametres.getReglesAffectation().addAll(dto.reglesAffectation());
-        }
+        applyDto(parametres, dto);
         return parametresRepository.save(parametres);
     }
 
@@ -80,6 +72,12 @@ public class ParametresService {
                             .build();
                     return parametresRepository.save(defaults);
                 });
+        applyDto(parametres, dto);
+        return parametresRepository.save(parametres);
+    }
+
+    /** B-17: Shared helper to apply DTO fields onto an existing Parametres entity. */
+    private void applyDto(Parametres parametres, ParametresDto dto) {
         parametres.setHeureDebut(dto.heureDebut());
         parametres.setHeureFin(dto.heureFin());
         if (dto.joursActifs() != null) {
@@ -96,6 +94,5 @@ public class ParametresService {
             parametres.getReglesAffectation().clear();
             parametres.getReglesAffectation().addAll(dto.reglesAffectation());
         }
-        return parametresRepository.save(parametres);
     }
 }

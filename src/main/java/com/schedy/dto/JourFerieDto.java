@@ -9,5 +9,6 @@ public record JourFerieDto(
     String id,
     @NotBlank String nom,
     @NotNull LocalDate date,
-    boolean recurrent
+    boolean recurrent,
+    String siteId
 ) {}

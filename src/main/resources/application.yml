@@ -1,53 +1,82 @@
+# ══════════════════════════════════════════════════════════════
+# SCHEDY BACKEND — Configuration
+# ──────────────────────────────────────────────────────────────
+# Toutes les variables ont un fallback dev. En prod, seules
+# les variables marquees (PROD) doivent etre definies.
+# ══════════════════════════════════════════════════════════════
+
 spring:
   application:
     name: schedy-backend
 
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:prod}
+    active: ${SPRING_PROFILES_ACTIVE:dev}  # dev par defaut, PROD: mettre "prod"
 
   jpa:
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
 
   jackson:
     serialization:
       write-dates-as-timestamps: false
 
+# ── JWT ──
 jwt:
-  secret: ${JWT_SECRET}  # REQUIRED — no fallback. App will fail to start if missing.
-  access-token-expiration: 900000      # 15 minutes
-  refresh-token-expiration: 604800000  # 7 days
+  secret: ${JWT_SECRET:devOnlySecretKey2026SchedyLocalDevelopmentNotForProd}
+  access-token-expiration: ${JWT_ACCESS_EXPIRATION:900000}       # 15 minutes
+  refresh-token-expiration: ${JWT_REFRESH_EXPIRATION:604800000}  # 7 jours
 
-  mail:
-    host: ${MAIL_HOST:smtp-relay.brevo.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-    from: ${MAIL_FROM:noreply@schedy.app}
+# ── Mail ──
+spring.mail:
+  host: ${MAIL_HOST:smtp-relay.brevo.com}
+  port: ${MAIL_PORT:587}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
+  properties:
+    mail:
+      smtp:
+        auth: true
+        starttls:
+          enable: true
+  from: ${MAIL_FROM:noreply@schedy.app}
 
+# ── Schedy config ──
+schedy:
+  kiosk:
+    admin-code: ${KIOSK_ADMIN_CODE:2580}  # Code pour quitter le mode kiosk
+
+# ── Server ──
 server:
-  port: 8083
+  port: ${SERVER_PORT:8083}
   shutdown: graceful
 
 spring.lifecycle:
   timeout-per-shutdown-phase: 30s
 
+# ── CORS ──
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+
+# ── Actuator ──
 management:
   server:
-    port: ${MANAGEMENT_PORT:8084}  # Actuator on separate port, not exposed publicly
+    port: ${MANAGEMENT_PORT:8084}
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
 
+# ══════════════════════════════════════════════════════════════
+# PROFIL DEV
+# ══════════════════════════════════════════════════════════════
 ---
 spring:
   config:
@@ -55,7 +84,7 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/schedydb
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/schedydb}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:root}
@@ -79,6 +108,11 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+# ══════════════════════════════════════════════════════════════
+# PROFIL PROD — Variables a definir:
+#   DB_URL, DB_USERNAME, DB_PASSWORD, JWT_SECRET
+#   CORS_ALLOWED_ORIGINS, KIOSK_ADMIN_CODE
+# ══════════════════════════════════════════════════════════════
 ---
 spring:
   config:
@@ -88,13 +122,15 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/schedydb}
     driver-class-name: org.postgresql.Driver
-    username: ${DB_USERNAME}
+    username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
+      max-lifetime: 1800000
+      keepalive-time: 60000
 
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
@@ -104,8 +140,14 @@ spring:
 
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: false
 
   sql:
     init:
       mode: never
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

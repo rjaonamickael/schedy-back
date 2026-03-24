@@ -36,6 +36,6 @@ public class User {
     private String refreshToken;
 
     public enum UserRole {
-        ADMIN, MANAGER, EMPLOYEE
+        SUPERADMIN, ADMIN, MANAGER, EMPLOYEE
     }
 }

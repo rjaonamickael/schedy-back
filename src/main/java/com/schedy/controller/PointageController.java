@@ -1,6 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.request.PointerRequest;
+import com.schedy.dto.request.PointageManuelRequest;
 import com.schedy.dto.PointageDto;
 import com.schedy.dto.response.PointageResponse;
 import com.schedy.service.PointageService;
@@ -18,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/pointages")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class PointageController {
 
     private final PointageService pointageService;
@@ -75,6 +77,12 @@ public class PointageController {
         return ResponseEntity.status(HttpStatus.CREATED).body(PointageResponse.from(pointageService.pointer(request)));
     }
 
+    @PostMapping("/manuel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<PointageResponse> pointerManuel(@Valid @RequestBody PointageManuelRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(PointageResponse.from(pointageService.pointerManuel(request)));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<PointageResponse> update(@PathVariable String id, @Valid @RequestBody PointageDto dto) {
@@ -82,7 +90,7 @@ public class PointageController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         pointageService.delete(id);
         return ResponseEntity.noContent().build();

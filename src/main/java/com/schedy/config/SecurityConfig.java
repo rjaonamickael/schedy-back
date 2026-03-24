@@ -52,6 +52,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/pointage-codes/validate").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/superadmin/**").hasRole("SUPERADMIN")
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     // Dev-only: Swagger UI + H2 console
                     for (String profile : environment.getActiveProfiles()) {

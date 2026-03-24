@@ -4,10 +4,8 @@ import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageCodeDto;
 import com.schedy.entity.PointageCode;
 import com.schedy.entity.PointageCode.FrequenceRotation;
-import com.schedy.entity.Site;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
-import com.schedy.repository.SiteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +30,6 @@ class PointageCodeServiceTest {
 
     @Mock private PointageCodeRepository pointageCodeRepository;
     @Mock private EmployeRepository employeRepository;
-    @Mock private SiteRepository siteRepository;
     @Mock private TenantContext tenantContext;
 
     @InjectMocks private PointageCodeService pointageCodeService;

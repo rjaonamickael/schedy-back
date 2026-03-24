@@ -30,13 +30,14 @@ Thumbs.db
 *.log
 logs/
 
-# Env
+# Env & secrets
 .env
-*.env.local
-
-# Application
-application-local.properties
+.env.*
+!.env.example
 application-local.yml
-
-# Local secrets
+application-local.properties
 src/main/resources/application-local.yml
+src/main/resources/application-local.properties
+
+# Docker
+docker-compose.override.yml

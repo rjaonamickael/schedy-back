@@ -8,16 +8,15 @@ import com.schedy.entity.PointageCode.FrequenceRotation;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
+import com.schedy.util.CryptoUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -31,6 +30,9 @@ public class PointageCodeService {
     private final PointageCodeRepository pointageCodeRepository;
     private final EmployeRepository employeRepository;
     private final TenantContext tenantContext;
+
+    @Value("${schedy.kiosk.admin-code:}")
+    private String kioskAdminCode;
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String ALPHANUMERIC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -155,6 +157,24 @@ public class PointageCodeService {
                 .orElseThrow(() -> new BusinessRuleException("Employe non trouve dans cette organisation"));
     }
 
+    // ---- Kiosk admin code validation ----
+
+    /**
+     * Validates the kiosk admin code submitted from the kiosk UI.
+     * The admin code is configured via the schedy.kiosk.admin-code property.
+     * Returns false if the property is not configured (empty).
+     */
+    public boolean validateKioskAdminCode(String code) {
+        if (kioskAdminCode == null || kioskAdminCode.isBlank()) {
+            log.warn("Kiosk admin code validation attempted but schedy.kiosk.admin-code is not configured");
+            return false;
+        }
+        // B-06: Use constant-time comparison to prevent timing attacks on the admin code.
+        return java.security.MessageDigest.isEqual(
+                kioskAdminCode.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     // ---- Internal helpers ----
 
     private PointageCode generateNewCode(String siteId, FrequenceRotation frequence, String orgId) {
@@ -266,15 +286,8 @@ public class PointageCodeService {
         );
     }
 
+    // B-16: Delegate to shared CryptoUtil to avoid code duplication with AuthService
     private String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) hex.append(String.format("%02x", b));
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
+        return CryptoUtil.sha256(input);
     }
 }

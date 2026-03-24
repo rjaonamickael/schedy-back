@@ -2,6 +2,7 @@ package com.schedy.controller;
 
 import com.schedy.dto.PointageCodeDto;
 import com.schedy.dto.request.PointageCodeConfigRequest;
+import com.schedy.dto.request.ValidateKioskAdminRequest;
 import com.schedy.dto.request.ValidatePointageCodeRequest;
 import com.schedy.dto.response.KioskPointageCodeResponse;
 import com.schedy.dto.response.PointageResponse;
@@ -84,6 +85,18 @@ public class PointageCodeController {
         PointageResponse pointage = PointageResponse.from(pointageService.pointerFromKiosk(pointerRequest, result.organisationId()));
 
         return ResponseEntity.status(HttpStatus.CREATED).body(pointage);
+    }
+
+    /**
+     * Public endpoint for kiosk admin code validation.
+     * Used to exit kiosk mode — the admin code is validated server-side
+     * so it never appears in the frontend JS bundle.
+     */
+    @PostMapping("/kiosk/admin/validate")
+    public ResponseEntity<java.util.Map<String, Boolean>> validateKioskAdmin(
+            @Valid @RequestBody ValidateKioskAdminRequest request) {
+        boolean valid = pointageCodeService.validateKioskAdminCode(request.code());
+        return ResponseEntity.ok(java.util.Map.of("valid", valid));
     }
 
     private FrequenceRotation parseFrequence(String value) {

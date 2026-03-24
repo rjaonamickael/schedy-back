@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 @Entity
 @Table(name = "organisation")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -22,4 +24,15 @@ public class Organisation {
     private String adresse;
 
     private String telephone;
+
+    // Added by V7 migration — platform-level metadata
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
+
+    @Column(name = "status", length = 50)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 }

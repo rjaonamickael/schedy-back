@@ -9,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 public class TenantContext {
 
     private String organisationId;
+    private boolean superAdmin = false;
 
     public String getOrganisationId() {
         return organisationId;
@@ -23,5 +24,13 @@ public class TenantContext {
             throw new AccessDeniedException("Organisation context required");
         }
         return organisationId;
+    }
+
+    public void markAsSuperAdmin() {
+        this.superAdmin = true;
+    }
+
+    public boolean isSuperAdmin() {
+        return superAdmin;
     }
 }

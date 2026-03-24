@@ -46,7 +46,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String email = jwtUtil.extractEmail(token);
             String role = jwtUtil.extractRole(token);
             String organisationId = jwtUtil.extractOrganisationId(token);
-            tenantContext.setOrganisationId(organisationId);
+
+            // SUPERADMIN operates without an organisation context
+            if ("SUPERADMIN".equals(role)) {
+                tenantContext.markAsSuperAdmin();
+            } else {
+                tenantContext.setOrganisationId(organisationId);
+            }
 
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
@@ -55,7 +61,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
                 // Store organisationId as request attribute for downstream services
+                // For impersonation tokens, also expose the impersonator claim for audit logging
                 request.setAttribute("organisationId", organisationId);
+                String impersonator = jwtUtil.extractClaim(token, "impersonator");
+                if (impersonator != null) {
+                    request.setAttribute("impersonator", impersonator);
+                }
             }
         }
 

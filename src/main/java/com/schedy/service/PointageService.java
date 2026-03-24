@@ -2,14 +2,18 @@ package com.schedy.service;
 
 import com.schedy.config.TenantContext;
 import com.schedy.dto.request.PointerRequest;
+import com.schedy.dto.request.PointageManuelRequest;
 import com.schedy.dto.PointageDto;
 import com.schedy.entity.*;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.PointageRepository;
+import com.schedy.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +31,7 @@ import java.util.Optional;
 public class PointageService {
 
     private final PointageRepository pointageRepository;
+    private final UserRepository userRepository;
     private final TenantContext tenantContext;
 
     @Transactional(readOnly = true)
@@ -88,7 +93,40 @@ public class PointageService {
     @Transactional
     public Pointage pointer(PointerRequest request) {
         String orgId = tenantContext.requireOrganisationId();
+
+        // B-04: Ownership check — EMPLOYEE may only clock in/out for themselves.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"))) {
+            String callerEmail = auth.getName();
+            String callerEmployeId = userRepository.findByEmail(callerEmail)
+                    .map(u -> u.getEmployeId())
+                    .orElse(null);
+            if (callerEmployeId == null || !callerEmployeId.equals(request.employeId())) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Un employe ne peut pointer que pour lui-meme");
+            }
+        }
+
         return buildAndSavePointage(request, orgId);
+    }
+
+    @Transactional
+    public Pointage pointerManuel(PointageManuelRequest request) {
+        String orgId = tenantContext.requireOrganisationId();
+        Pointage pointage = Pointage.builder()
+                .employeId(request.employeId())
+                .type(parseTypePointage(request.type()))
+                .horodatage(request.horodatage())
+                .methode(parseMethodePointage(request.methode()))
+                .siteId(request.siteId())
+                .organisationId(orgId)
+                .statut(StatutPointage.valide)
+                .build();
+        Pointage saved = pointageRepository.save(pointage);
+        log.info("Pointage manuel created: employe={}, type={}, site={}, horodatage={}",
+                request.employeId(), request.type(), request.siteId(), request.horodatage());
+        return saved;
     }
 
     @Transactional
@@ -99,8 +137,15 @@ public class PointageService {
         if (dto.type() != null) pointage.setType(parseTypePointage(dto.type()));
         if (dto.horodatage() != null) pointage.setHorodatage(dto.horodatage());
         if (dto.methode() != null) pointage.setMethode(parseMethodePointage(dto.methode()));
-        if (dto.statut() != null) pointage.setStatut(parseStatutPointage(dto.statut()));
-        pointage.setAnomalie(dto.anomalie());
+        if (dto.statut() != null) {
+            pointage.setStatut(parseStatutPointage(dto.statut()));
+            // When marking as corrected and no explicit anomalie value was provided,
+            // clear the anomalie — the correction resolves it.
+            if ("corrige".equals(dto.statut()) && dto.anomalie() == null) {
+                pointage.setAnomalie(null);
+            }
+        }
+        if (dto.anomalie() != null) pointage.setAnomalie(dto.anomalie());
         return pointageRepository.save(pointage);
     }
 

@@ -17,6 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/exigences")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class ExigenceController {
 
     private final ExigenceService exigenceService;

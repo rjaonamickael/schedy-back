@@ -37,6 +37,20 @@ public class JwtUtil {
         return buildToken(email, claims, accessTokenExpiration);
     }
 
+    /**
+     * Generates a short-lived impersonation token (30 minutes).
+     * The token carries role=ADMIN scoped to the target organisation and an
+     * "impersonator" claim recording which SUPERADMIN initiated the session.
+     */
+    public String generateImpersonationToken(String targetAdminEmail, String organisationId, String impersonatorEmail) {
+        var claims = new java.util.HashMap<String, Object>();
+        claims.put("role", "ADMIN");
+        claims.put("organisationId", organisationId);
+        claims.put("impersonator", impersonatorEmail);
+        long thirtyMinutes = 30 * 60 * 1000L;
+        return buildToken(targetAdminEmail, claims, thirtyMinutes);
+    }
+
     public String generateRefreshToken(String email) {
         return buildToken(email, Map.of("type", "refresh"), refreshTokenExpiration);
     }
@@ -62,6 +76,14 @@ public class JwtUtil {
 
     public String extractOrganisationId(String token) {
         return parseClaims(token).get("organisationId", String.class);
+    }
+
+    public String extractClaim(String token, String claimKey) {
+        try {
+            return parseClaims(token).get(claimKey, String.class);
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     public boolean isTokenValid(String token) {

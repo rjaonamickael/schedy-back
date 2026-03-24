@@ -19,6 +19,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/conges")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class CongeController {
 
     private final CongeService congeService;
@@ -32,8 +33,10 @@ public class CongeController {
 
     @GetMapping("/types/all")
     public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
-        return ResponseEntity.ok(congeService.findAllTypes(PageRequest.of(0, 1000))
-                .map(TypeCongeResponse::from).getContent());
+        var page = congeService.findAllTypes(PageRequest.of(0, 1000)).map(TypeCongeResponse::from);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(page.getTotalElements()))
+                .body(page.getContent());
     }
 
     @GetMapping("/types/{id}")
@@ -69,8 +72,10 @@ public class CongeController {
 
     @GetMapping("/banques/all")
     public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
-        return ResponseEntity.ok(congeService.findAllBanques(PageRequest.of(0, 1000))
-                .map(BanqueCongeResponse::from).getContent());
+        var page = congeService.findAllBanques(PageRequest.of(0, 1000)).map(BanqueCongeResponse::from);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(page.getTotalElements()))
+                .body(page.getContent());
     }
 
     @GetMapping("/banques/{id}")
@@ -111,8 +116,10 @@ public class CongeController {
 
     @GetMapping("/demandes/all")
     public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
-        return ResponseEntity.ok(congeService.findAllDemandes(PageRequest.of(0, 1000))
-                .map(DemandeCongeResponse::from).getContent());
+        var page = congeService.findAllDemandes(PageRequest.of(0, 1000)).map(DemandeCongeResponse::from);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(page.getTotalElements()))
+                .body(page.getContent());
     }
 
     @GetMapping("/demandes/{id}")
@@ -125,7 +132,14 @@ public class CongeController {
         return ResponseEntity.ok(congeService.findDemandesByEmployeId(employeId).stream().map(DemandeCongeResponse::from).toList());
     }
 
+    /**
+     * Create a leave request. Any authenticated user in the same org can submit.
+     * Tenant scoping (organisationId from JWT) prevents cross-org abuse.
+     * Note: full RBAC ownership (EMPLOYEE can only submit for self) requires
+     * employeId in JWT claims — deferred to post-beta.
+     */
     @PostMapping("/demandes")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<DemandeCongeResponse> createDemande(@Valid @RequestBody DemandeCongeDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(DemandeCongeResponse.from(congeService.createDemande(dto)));
     }
@@ -151,7 +165,7 @@ public class CongeController {
     }
 
     @DeleteMapping("/demandes/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<Void> deleteDemande(@PathVariable String id) {
         congeService.deleteDemande(id);
         return ResponseEntity.noContent().build();

@@ -1,6 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.dto.EmployeDto;
+import com.schedy.dto.request.FindByPinRequest;
 import com.schedy.dto.response.EmployeResponse;
 import com.schedy.service.EmployeService;
 import jakarta.validation.Valid;
@@ -14,11 +15,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/employes")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class EmployeController {
 
     private final EmployeService employeService;
@@ -41,7 +42,9 @@ public class EmployeController {
         } else {
             page = employeService.findAll(PageRequest.of(0, 1000)).map(EmployeResponse::from);
         }
-        return ResponseEntity.ok(page.getContent());
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(page.getTotalElements()))
+                .body(page.getContent());
     }
 
     @GetMapping("/{id}")
@@ -61,12 +64,8 @@ public class EmployeController {
 
     @PostMapping("/find-by-pin")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<EmployeResponse> findByPin(@RequestBody Map<String, String> body) {
-        String pin = body.get("pin");
-        if (pin == null || pin.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        return employeService.findByPin(pin)
+    public ResponseEntity<EmployeResponse> findByPin(@Valid @RequestBody FindByPinRequest request) {
+        return employeService.findByPin(request.pin())
                 .map(EmployeResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

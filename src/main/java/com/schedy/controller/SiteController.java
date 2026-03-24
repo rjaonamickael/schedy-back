@@ -17,6 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/sites")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class SiteController {
 
     private final SiteService siteService;

@@ -36,7 +36,8 @@ public class Parametres {
     private double dureeMinAffectation = 1.0;
 
     @Builder.Default
-    private double heuresMaxSemaine = 48.0;
+    @Column(columnDefinition = "double precision default 48.0")
+    private Double heuresMaxSemaine = 48.0;
 
     @Column(unique = true)
     private String siteId;

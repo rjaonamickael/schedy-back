@@ -7,6 +7,7 @@ import com.schedy.dto.request.RegisterRequest;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.entity.User;
 import com.schedy.repository.UserRepository;
+import com.schedy.util.CryptoUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -15,9 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +33,11 @@ public class AuthService {
     // 5 failures within 15 minutes = account locked for 15 minutes.
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final long LOCKOUT_DURATION_MS = 15 * 60 * 1000L; // 15 minutes
+    // B-05: LIMITATION — This lockout map is in-memory only. It does NOT persist across restarts
+    // and does NOT work in multi-instance deployments (horizontal scaling). Each JVM instance tracks
+    // its own failed attempts independently, so an attacker can bypass lockout by cycling between
+    // instances. A proper fix requires a distributed store (e.g., Redis with SETNX + TTL).
+    // Accepted as-is for beta (single-instance). Must be replaced before scaling to multiple pods.
     private final Map<String, FailedLoginTracker> failedLogins = new ConcurrentHashMap<>();
 
     private record FailedLoginTracker(int attempts, Instant firstAttempt, Instant lockedUntil) {
@@ -56,6 +59,9 @@ public class AuthService {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Rôle invalide : " + request.role());
             }
+        }
+        if (role == User.UserRole.SUPERADMIN) {
+            throw new IllegalArgumentException("L'inscription en tant que SUPERADMIN n'est pas autorisée.");
         }
         if (role == User.UserRole.ADMIN || role == User.UserRole.MANAGER) {
             throw new IllegalArgumentException("L'inscription en tant qu'" + role + " n'est pas autorisée. Contactez un administrateur.");
@@ -175,15 +181,8 @@ public class AuthService {
         });
     }
 
+    // B-16: Delegate to CryptoUtil to avoid duplicating SHA-256 logic with PointageCodeService
     private String hashToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) hex.append(String.format("%02x", b));
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
+        return CryptoUtil.sha256(token);
     }
 }

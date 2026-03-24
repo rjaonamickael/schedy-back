@@ -7,7 +7,8 @@ public record SiteResponse(
         String nom,
         String adresse,
         String telephone,
-        boolean actif
+        boolean actif,
+        String organisationId
 ) {
     public static SiteResponse from(Site s) {
         return new SiteResponse(
@@ -15,7 +16,8 @@ public record SiteResponse(
                 s.getNom(),
                 s.getAdresse(),
                 s.getTelephone(),
-                s.isActif()
+                s.isActif(),
+                s.getOrganisationId()
         );
     }
 }

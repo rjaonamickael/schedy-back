@@ -17,6 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/roles")
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 public class RoleController {
 
     private final RoleService roleService;
