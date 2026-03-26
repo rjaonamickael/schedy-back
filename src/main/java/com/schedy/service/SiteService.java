@@ -2,7 +2,7 @@ package com.schedy.service;
 
 import com.schedy.config.TenantContext;
 import com.schedy.dto.SiteDto;
-import com.schedy.entity.PointageCode.FrequenceRotation;
+import com.schedy.entity.PointageCode.UniteRotation;
 import com.schedy.entity.Site;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.SiteRepository;
@@ -60,6 +60,8 @@ public class SiteService {
         Site site = new Site();
         site.setNom(dto.nom());
         site.setAdresse(dto.adresse());
+        site.setVille(dto.ville());
+        site.setCodePostal(dto.codePostal());
         site.setTelephone(dto.telephone());
         site.setOrganisationId(orgId);
         site.setActif(dto.actif());
@@ -67,7 +69,7 @@ public class SiteService {
 
         // Auto-create a PointageCode for the new site
         try {
-            pointageCodeService.createForSiteInternal(site.getId(), FrequenceRotation.QUOTIDIEN, orgId);
+            pointageCodeService.createForSiteInternal(site.getId(), 1, UniteRotation.JOURS, orgId);
             log.info("Auto-created pointage code for new site: {} ({})", site.getNom(), site.getId());
         } catch (Exception e) {
             log.warn("Failed to auto-create pointage code for site {}: {}", site.getId(), e.getMessage());
@@ -83,6 +85,8 @@ public class SiteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Site", id));
         site.setNom(dto.nom());
         site.setAdresse(dto.adresse());
+        site.setVille(dto.ville());
+        site.setCodePostal(dto.codePostal());
         site.setTelephone(dto.telephone());
         site.setActif(dto.actif());
         return siteRepository.save(site);

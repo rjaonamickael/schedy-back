@@ -44,10 +44,12 @@ public class Employe {
     private LocalDate dateEmbauche;
 
     @JsonIgnore
-    private String pin;
+    private String pin;         // BCrypt hash for verification
 
     @JsonIgnore
-    private String pinHash;
+    private String pinHash;     // SHA-256 hash for O(1) lookup
+
+    private String pinClair;    // Raw PIN — displayed to the employee in their dashboard
 
     private String organisationId;
 

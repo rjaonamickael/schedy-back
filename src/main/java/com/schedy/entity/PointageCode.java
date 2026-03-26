@@ -34,9 +34,14 @@ public class PointageCode {
      */
     private String pinHash;
 
-    @Column(nullable = false)
+    @Column(name = "rotation_valeur", nullable = false)
+    @Builder.Default
+    private int rotationValeur = 1;
+
+    @Column(name = "rotation_unite", nullable = false)
     @Enumerated(EnumType.STRING)
-    private FrequenceRotation frequence;
+    @Builder.Default
+    private UniteRotation rotationUnite = UniteRotation.JOURS;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime validFrom;
@@ -51,8 +56,8 @@ public class PointageCode {
     @Column(name = "organisation_id")
     private String organisationId;
 
-    public enum FrequenceRotation {
-        QUOTIDIEN, HEBDOMADAIRE, BI_HEBDOMADAIRE, MENSUEL
+    public enum UniteRotation {
+        MINUTES, HEURES, JOURS, SEMAINES, MOIS
     }
 
     public boolean isExpired() {

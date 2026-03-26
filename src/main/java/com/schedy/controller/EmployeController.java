@@ -2,7 +2,9 @@ package com.schedy.controller;
 
 import com.schedy.dto.EmployeDto;
 import com.schedy.dto.request.FindByPinRequest;
+import com.schedy.dto.request.UpdateSystemRoleRequest;
 import com.schedy.dto.response.EmployeResponse;
+import com.schedy.entity.User;
 import com.schedy.service.EmployeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/employes")
@@ -27,20 +30,26 @@ public class EmployeController {
     @GetMapping
     public ResponseEntity<Page<EmployeResponse>> findAll(Pageable pageable,
             @RequestParam(value = "siteId", required = false) String siteId) {
+        Map<String, User> userMap = employeService.findAllUserMapByOrg();
         if (siteId != null) {
-            return ResponseEntity.ok(employeService.findBySiteId(siteId, pageable).map(EmployeResponse::from));
+            return ResponseEntity.ok(employeService.findBySiteId(siteId, pageable)
+                    .map(e -> EmployeResponse.from(e, userMap.get(e.getId()))));
         }
-        return ResponseEntity.ok(employeService.findAll(pageable).map(EmployeResponse::from));
+        return ResponseEntity.ok(employeService.findAll(pageable)
+                .map(e -> EmployeResponse.from(e, userMap.get(e.getId()))));
     }
 
     @GetMapping("/all")
     public ResponseEntity<List<EmployeResponse>> findAll(
             @RequestParam(value = "siteId", required = false) String siteId) {
+        Map<String, User> userMap = employeService.findAllUserMapByOrg();
         Page<EmployeResponse> page;
         if (siteId != null) {
-            page = employeService.findBySiteId(siteId, PageRequest.of(0, 1000)).map(EmployeResponse::from);
+            page = employeService.findBySiteId(siteId, PageRequest.of(0, 1000))
+                    .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         } else {
-            page = employeService.findAll(PageRequest.of(0, 1000)).map(EmployeResponse::from);
+            page = employeService.findAll(PageRequest.of(0, 1000))
+                    .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         }
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
@@ -50,6 +59,28 @@ public class EmployeController {
     @GetMapping("/{id}")
     public ResponseEntity<EmployeResponse> findById(@PathVariable String id) {
         return ResponseEntity.ok(EmployeResponse.from(employeService.findById(id)));
+    }
+
+    /**
+     * Returns the raw PIN for an employee via POST (avoids PIN in URL/logs).
+     * Accessible to ADMIN/MANAGER (any employee) or to the employee themselves.
+     */
+    @PostMapping("/{id}/pin")
+    public ResponseEntity<java.util.Map<String, String>> getPin(
+            @PathVariable String id,
+            org.springframework.security.core.Authentication authentication) {
+        boolean isAdminOrManager = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_MANAGER"));
+        if (!isAdminOrManager) {
+            String callerEmail = authentication.getName();
+            var user = employeService.findUserByEmail(callerEmail);
+            if (user == null || !id.equals(user.getEmployeId())) {
+                return ResponseEntity.status(403).build();
+            }
+        }
+        var employe = employeService.findById(id);
+        String pin = employe.getPinClair();
+        return ResponseEntity.ok(java.util.Map.of("pin", pin != null ? pin : ""));
     }
 
     @GetMapping("/role/{role}")
@@ -81,6 +112,27 @@ public class EmployeController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<EmployeResponse> update(@PathVariable String id, @Valid @RequestBody EmployeDto dto) {
         return ResponseEntity.ok(EmployeResponse.from(employeService.update(id, dto)));
+    }
+
+    /**
+     * Promotes or demotes an employee's system role.
+     * Accepts: systemRole = "MANAGER" | "EMPLOYEE", tempPassword (optional; auto-generated if absent).
+     *
+     * When a new User account is created (promotion only), the response body contains:
+     *   { "tempPassword": "<generated-password>" }
+     * so the admin can hand it to the new manager immediately.
+     * If the account already existed, or the operation is a demotion, returns 204 No Content.
+     */
+    @PutMapping("/{id}/system-role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, String>> updateSystemRole(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateSystemRoleRequest request) {
+        String tempPassword = employeService.updateSystemRole(id, request);
+        if (tempPassword != null) {
+            return ResponseEntity.ok(Map.of("tempPassword", tempPassword));
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

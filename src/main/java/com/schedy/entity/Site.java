@@ -21,6 +21,11 @@ public class Site {
 
     private String adresse;
 
+    private String ville;
+
+    @Column(name = "code_postal", length = 20)
+    private String codePostal;
+
     private String telephone;
 
     @Column(nullable = false)

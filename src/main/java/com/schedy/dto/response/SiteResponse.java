@@ -6,6 +6,8 @@ public record SiteResponse(
         String id,
         String nom,
         String adresse,
+        String ville,
+        String codePostal,
         String telephone,
         boolean actif,
         String organisationId
@@ -15,6 +17,8 @@ public record SiteResponse(
                 s.getId(),
                 s.getNom(),
                 s.getAdresse(),
+                s.getVille(),
+                s.getCodePostal(),
                 s.getTelephone(),
                 s.isActif(),
                 s.getOrganisationId()

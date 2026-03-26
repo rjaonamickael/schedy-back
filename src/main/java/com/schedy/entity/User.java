@@ -29,6 +29,8 @@ public class User {
     @Column(nullable = false)
     private UserRole role;
 
+    private String nom;
+
     private String employeId;
 
     private String organisationId;

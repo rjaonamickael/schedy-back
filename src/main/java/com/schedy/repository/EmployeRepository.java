@@ -35,4 +35,7 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
 
     List<Employe> findByRoleAndOrganisationId(String role, String organisationId);
     Optional<Employe> findByPinHashAndOrganisationId(String pinHash, String organisationId);
+
+    /** For kiosk PIN lookup — find by pinHash across all orgs, then filter by site */
+    List<Employe> findByPinHash(String pinHash);
 }

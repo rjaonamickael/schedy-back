@@ -7,6 +7,8 @@ public record SiteDto(
     String id,
     @NotBlank @Size(max = 255) String nom,
     @Size(max = 255) String adresse,
+    @Size(max = 255) String ville,
+    @Size(max = 20) String codePostal,
     @Size(max = 50) String telephone,
     String organisationId,
     boolean actif

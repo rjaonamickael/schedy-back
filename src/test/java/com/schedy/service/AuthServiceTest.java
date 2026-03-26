@@ -4,7 +4,10 @@ import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.RegisterRequest;
 import com.schedy.dto.response.AuthResponse;
+import com.schedy.entity.Organisation;
 import com.schedy.entity.User;
+import com.schedy.repository.EmployeRepository;
+import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,8 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
+    @Mock private EmployeRepository employeRepository;
+    @Mock private OrganisationRepository organisationRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtUtil jwtUtil;
 
@@ -53,12 +58,15 @@ class AuthServiceTest {
         when(jwtUtil.generateAccessToken(anyString(), anyString(), anyString())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(anyString())).thenReturn("refresh");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(organisationRepository.findById(ORG_ID))
+                .thenReturn(Optional.of(Organisation.builder().id(ORG_ID).nom("Test").pays("MG").build()));
 
         AuthResponse response = authService.login(new AuthRequest(EMAIL, PASSWORD));
 
         assertThat(response.accessToken()).isEqualTo("access");
         assertThat(response.email()).isEqualTo(EMAIL);
         assertThat(response.role()).isEqualTo("MANAGER");
+        assertThat(response.pays()).isEqualTo("MG");
     }
 
     @Test
@@ -105,6 +113,8 @@ class AuthServiceTest {
         when(jwtUtil.generateAccessToken(anyString(), anyString(), anyString())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(anyString())).thenReturn("refresh");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // register() creates a user with null organisationId (self-registration ignores org),
+        // so resolveOrgPays(null) is called — no stub needed for organisationRepository here.
 
         AuthResponse response = authService.register(req);
 

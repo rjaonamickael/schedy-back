@@ -3,8 +3,9 @@ package com.schedy.service;
 import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageCodeDto;
 import com.schedy.dto.response.KioskPointageCodeResponse;
+import com.schedy.entity.Employe;
 import com.schedy.entity.PointageCode;
-import com.schedy.entity.PointageCode.FrequenceRotation;
+import com.schedy.entity.PointageCode.UniteRotation;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -30,6 +33,7 @@ public class PointageCodeService {
     private final PointageCodeRepository pointageCodeRepository;
     private final EmployeRepository employeRepository;
     private final TenantContext tenantContext;
+    private final PasswordEncoder passwordEncoder;
 
     @Value("${schedy.kiosk.admin-code:}")
     private String kioskAdminCode;
@@ -47,7 +51,7 @@ public class PointageCodeService {
     @Transactional(readOnly = true)
     public PointageCodeDto getActiveForSite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrueAndOrganisationId(siteId, orgId);
+        Optional<PointageCode> existing = pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(siteId, orgId);
         if (existing.isPresent() && existing.get().isValid()) {
             return toDto(existing.get());
         }
@@ -55,30 +59,43 @@ public class PointageCodeService {
     }
 
     @Transactional
-    public PointageCodeDto getOrCreateForSite(String siteId, FrequenceRotation frequence) {
+    public PointageCodeDto getOrCreateForSite(String siteId, int rotationValeur, UniteRotation rotationUnite) {
+        validateRotation(rotationValeur, rotationUnite);
         String orgId = tenantContext.requireOrganisationId();
-        Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrueAndOrganisationId(siteId, orgId);
+        Optional<PointageCode> existing = pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(siteId, orgId);
         if (existing.isPresent() && existing.get().isValid()) {
-            return toDto(existing.get());
+            PointageCode code = existing.get();
+            // Update rotation if changed
+            if (code.getRotationValeur() != rotationValeur || code.getRotationUnite() != rotationUnite) {
+                code.setRotationValeur(rotationValeur);
+                code.setRotationUnite(rotationUnite);
+                // Recalculate validTo based on new frequency from validFrom
+                code.setValidTo(calculateValidTo(code.getValidFrom(), rotationValeur, rotationUnite));
+                pointageCodeRepository.save(code);
+                log.info("Updated rotation for site {} to {} {}", siteId, rotationValeur, rotationUnite);
+            }
+            return toDto(code);
         }
-        return toDto(generateNewCode(siteId, frequence, orgId));
+        return toDto(generateNewCode(siteId, rotationValeur, rotationUnite, orgId));
     }
 
     @Transactional
-    public PointageCodeDto regenerateNow(String siteId, FrequenceRotation frequence) {
+    public PointageCodeDto regenerateNow(String siteId, Integer rotationValeur, UniteRotation rotationUnite) {
         String orgId = tenantContext.requireOrganisationId();
-        // If no frequency provided, use the existing one
-        if (frequence == null) {
-            Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrueAndOrganisationId(siteId, orgId);
-            frequence = existing.map(PointageCode::getFrequence).orElse(FrequenceRotation.QUOTIDIEN);
+        // If no rotation params provided, carry over from the existing code
+        if (rotationValeur == null || rotationUnite == null) {
+            Optional<PointageCode> existing = pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(siteId, orgId);
+            int valeur = existing.map(PointageCode::getRotationValeur).orElse(1);
+            UniteRotation unite = existing.map(PointageCode::getRotationUnite).orElse(UniteRotation.JOURS);
+            return toDto(generateNewCode(siteId, valeur, unite, orgId));
         }
-        return toDto(generateNewCode(siteId, frequence, orgId));
+        return toDto(generateNewCode(siteId, rotationValeur, rotationUnite, orgId));
     }
 
     @Transactional
-    public PointageCodeDto updateFrequence(String siteId, FrequenceRotation frequence) {
+    public PointageCodeDto updateRotation(String siteId, int rotationValeur, UniteRotation rotationUnite) {
         String orgId = tenantContext.requireOrganisationId();
-        return toDto(generateNewCode(siteId, frequence, orgId));
+        return toDto(generateNewCode(siteId, rotationValeur, rotationUnite, orgId));
     }
 
     // ---- Public methods (no TenantContext - kiosk/validation endpoints) ----
@@ -90,7 +107,7 @@ public class PointageCodeService {
      */
     @Transactional(readOnly = true)
     public KioskPointageCodeResponse getActiveForSitePublic(String siteId) {
-        Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrue(siteId);
+        Optional<PointageCode> existing = pointageCodeRepository.findFirstBySiteIdAndActifTrueOrderByValidFromDesc(siteId);
         if (existing.isPresent() && existing.get().isValid()) {
             return toKioskDto(existing.get());
         }
@@ -98,15 +115,15 @@ public class PointageCodeService {
     }
 
     /**
-     * Internal method for DataInitializer -- creates a code without TenantContext.
+     * Internal method for system use (scheduler, setup) — creates a code without TenantContext.
      */
     @Transactional
-    public PointageCodeDto createForSiteInternal(String siteId, FrequenceRotation frequence, String organisationId) {
-        Optional<PointageCode> existing = pointageCodeRepository.findBySiteIdAndActifTrue(siteId);
+    public PointageCodeDto createForSiteInternal(String siteId, int rotationValeur, UniteRotation rotationUnite, String organisationId) {
+        Optional<PointageCode> existing = pointageCodeRepository.findFirstBySiteIdAndActifTrueOrderByValidFromDesc(siteId);
         if (existing.isPresent() && existing.get().isValid()) {
             return toDto(existing.get());
         }
-        return toDto(generateNewCode(siteId, frequence, organisationId));
+        return toDto(generateNewCode(siteId, rotationValeur, rotationUnite, organisationId));
     }
 
     /**
@@ -122,7 +139,7 @@ public class PointageCodeService {
     @Transactional(readOnly = true)
     public CodeValidationResult validateAndResolve(String codeOrPin) {
         // Try as code first
-        Optional<PointageCode> byCode = pointageCodeRepository.findByCodeAndActifTrue(codeOrPin);
+        Optional<PointageCode> byCode = pointageCodeRepository.findFirstByCodeAndActifTrueOrderByValidFromDesc(codeOrPin);
         if (byCode.isPresent()) {
             PointageCode pc = byCode.get();
             if (pc.isValid()) {
@@ -132,7 +149,7 @@ public class PointageCodeService {
         }
 
         // Try as PIN via SHA-256 hash lookup (B-M19)
-        Optional<PointageCode> byPin = pointageCodeRepository.findByPinHashAndActifTrue(sha256(codeOrPin));
+        Optional<PointageCode> byPin = pointageCodeRepository.findFirstByPinHashAndActifTrueOrderByValidFromDesc(sha256(codeOrPin));
         if (byPin.isPresent()) {
             PointageCode pc = byPin.get();
             if (pc.isValid()) {
@@ -157,6 +174,29 @@ public class PointageCodeService {
                 .orElseThrow(() -> new BusinessRuleException("Employe non trouve dans cette organisation"));
     }
 
+    // ---- Kiosk PIN clock-in ----
+
+    /**
+     * Find an employee by raw PIN who belongs to the given site.
+     * Used by the public kiosk PIN endpoint (no TenantContext).
+     * Returns null if no matching employee found.
+     */
+    @Transactional(readOnly = true)
+    public Employe findEmployeByPinAndSite(String rawPin, String siteId) {
+        String hash = CryptoUtil.sha256(rawPin);
+        var candidates = employeRepository.findByPinHash(hash);
+        for (var emp : candidates) {
+            // Verify BCrypt matches (pinHash is SHA-256 for fast lookup, pin is BCrypt for security)
+            if (emp.getPin() != null && org.springframework.security.crypto.bcrypt.BCrypt.checkpw(rawPin, emp.getPin())) {
+                // Check this employee belongs to the site
+                if (emp.getSiteIds() != null && emp.getSiteIds().contains(siteId)) {
+                    return emp;
+                }
+            }
+        }
+        return null;
+    }
+
     // ---- Kiosk admin code validation ----
 
     /**
@@ -177,9 +217,11 @@ public class PointageCodeService {
 
     // ---- Internal helpers ----
 
-    private PointageCode generateNewCode(String siteId, FrequenceRotation frequence, String orgId) {
+    private PointageCode generateNewCode(String siteId, int rotationValeur, UniteRotation rotationUnite, String orgId) {
+        validateRotation(rotationValeur, rotationUnite);
+
         // Deactivate existing code for this site
-        pointageCodeRepository.findBySiteIdAndActifTrueAndOrganisationId(siteId, orgId)
+        pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(siteId, orgId)
                 .ifPresent(old -> {
                     old.setActif(false);
                     pointageCodeRepository.save(old);
@@ -187,7 +229,7 @@ public class PointageCodeService {
                 });
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        OffsetDateTime validTo = calculateValidTo(now, frequence);
+        OffsetDateTime validTo = calculateValidTo(now, rotationValeur, rotationUnite);
 
         String code = generateUniqueCode();
         String pin = generateUniquePin();
@@ -197,7 +239,8 @@ public class PointageCodeService {
                 .code(code)
                 .pin(pin)
                 .pinHash(sha256(pin))
-                .frequence(frequence)
+                .rotationValeur(rotationValeur)
+                .rotationUnite(rotationUnite)
                 .validFrom(now)
                 .validTo(validTo)
                 .actif(true)
@@ -205,17 +248,61 @@ public class PointageCodeService {
                 .build();
 
         pointageCode = pointageCodeRepository.save(pointageCode);
-        log.info("Generated new pointage code for site: {} (valid until {})", siteId, validTo);
+        log.info("Generated new pointage code for site: {} (valid until {}, rotation: {} {})",
+                siteId, validTo, rotationValeur, rotationUnite);
+
+        // Cascade: regenerate employee PINs for this site
+        regenerateEmployeePins(siteId, orgId);
+
         return pointageCode;
     }
 
-    private OffsetDateTime calculateValidTo(OffsetDateTime from, FrequenceRotation frequence) {
-        return switch (frequence) {
-            case QUOTIDIEN -> from.plusHours(24);
-            case HEBDOMADAIRE -> from.plusDays(7);
-            case BI_HEBDOMADAIRE -> from.plusDays(14);
-            case MENSUEL -> from.plusDays(30);
+    private OffsetDateTime calculateValidTo(OffsetDateTime from, int valeur, UniteRotation unite) {
+        return switch (unite) {
+            case MINUTES  -> from.plusMinutes(valeur);
+            case HEURES   -> from.plusHours(valeur);
+            case JOURS    -> from.plusDays(valeur);
+            case SEMAINES -> from.plusWeeks(valeur);
+            case MOIS     -> from.plusMonths(valeur);
         };
+    }
+
+    private void validateRotation(int valeur, UniteRotation unite) {
+        int max = switch (unite) {
+            case MINUTES  -> 59;
+            case HEURES   -> 23;
+            case JOURS    -> 30;
+            case SEMAINES -> 4;
+            case MOIS     -> 12;
+        };
+        if (valeur < 1 || valeur > max) {
+            throw new BusinessRuleException(
+                    "Valeur " + valeur + " invalide pour " + unite + " (1-" + max + ")");
+        }
+    }
+
+    /**
+     * Regenerates BCrypt + SHA-256 + plain PINs for all employees assigned to a site.
+     * Called whenever a new pointage code is generated so employee PINs stay in sync
+     * with the new rotation cycle.
+     *
+     * @param siteId the site whose employees need fresh PINs
+     * @param orgId  the organisation that owns the site
+     * @return number of employees whose PINs were regenerated
+     */
+    private int regenerateEmployeePins(String siteId, String orgId) {
+        List<Employe> employes = employeRepository.findBySiteIdsContainingAndOrganisationId(siteId, orgId);
+        for (Employe emp : employes) {
+            String newPin = String.format("%04d", RANDOM.nextInt(10000));
+            emp.setPin(passwordEncoder.encode(newPin));
+            emp.setPinHash(CryptoUtil.sha256(newPin));
+            emp.setPinClair(newPin);
+        }
+        if (!employes.isEmpty()) {
+            employeRepository.saveAll(employes);
+            log.info("Regenerated PINs for {} employees on site {}", employes.size(), siteId);
+        }
+        return employes.size();
     }
 
     private String generateUniqueCode() {
@@ -268,18 +355,24 @@ public class PointageCodeService {
                 pc.getSiteId(),
                 pc.getCode(),
                 pc.getPin(),
-                pc.getFrequence().name(),
+                pc.getRotationValeur(),
+                pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),
                 pc.getValidTo().toString(),
                 pc.isActif()
         );
     }
 
+    /**
+     * Builds the public kiosk DTO. PIN is intentionally omitted — the PIN is only
+     * returned on the authenticated GET /site/{siteId} endpoint (PointageCodeDto).
+     */
     private KioskPointageCodeResponse toKioskDto(PointageCode pc) {
         return new KioskPointageCodeResponse(
                 pc.getSiteId(),
                 pc.getCode(),
-                pc.getFrequence().name(),
+                pc.getRotationValeur(),
+                pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),
                 pc.getValidTo().toString(),
                 pc.isActif()

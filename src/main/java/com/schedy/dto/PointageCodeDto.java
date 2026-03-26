@@ -5,7 +5,8 @@ public record PointageCodeDto(
     String siteId,
     String code,
     String pin,
-    String frequence,
+    int rotationValeur,
+    String rotationUnite,
     String validFrom,
     String validTo,
     boolean actif

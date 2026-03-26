@@ -92,15 +92,18 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate   # Flyway manages schema — Hibernate only validates
     show-sql: false
 
   flyway:
-    enabled: false
+    enabled: true
+    # NOTE: switching from ddl-auto:update to Flyway requires a fresh DB.
+    # On first use: DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+    # Then restart the app — Flyway will apply V1+V2 from scratch.
 
   sql:
     init:
-      mode: never
+      mode: never          # Flyway handles init, not Spring SQL
 
 springdoc:
   api-docs:

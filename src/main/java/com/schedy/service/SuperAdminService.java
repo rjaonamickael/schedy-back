@@ -104,6 +104,7 @@ public class SuperAdminService {
                 .nom(request.name())
                 .status("ACTIVE")
                 .createdAt(OffsetDateTime.now())
+                .pays(request.pays())
                 .build();
         org = organisationRepository.save(org);
 
@@ -313,7 +314,7 @@ public class SuperAdminService {
                 .body(dto.body())
                 .severity(severity)
                 .active(dto.active())
-                .expiresAt(dto.expiresAt())
+                .expiresAt(parseExpiresAt(dto.expiresAt()))
                 .build();
         return announcementRepository.save(announcement);
     }
@@ -327,8 +328,25 @@ public class SuperAdminService {
         ann.setBody(dto.body());
         ann.setSeverity(parseSeverity(dto.severity()));
         ann.setActive(dto.active());
-        ann.setExpiresAt(dto.expiresAt());
+        ann.setExpiresAt(parseExpiresAt(dto.expiresAt()));
         return announcementRepository.save(ann);
+    }
+
+    /** Parse an expiration date string — accepts both ISO datetime and plain date (YYYY-MM-DD). */
+    private java.time.OffsetDateTime parseExpiresAt(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.OffsetDateTime.parse(raw);
+        } catch (java.time.format.DateTimeParseException e) {
+            try {
+                // Plain date → end of day UTC
+                return java.time.LocalDate.parse(raw)
+                        .atTime(23, 59, 59)
+                        .atOffset(java.time.ZoneOffset.UTC);
+            } catch (java.time.format.DateTimeParseException e2) {
+                return null;
+            }
+        }
     }
 
     @Transactional

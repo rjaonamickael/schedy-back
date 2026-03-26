@@ -20,8 +20,14 @@ public class CorsConfig {
             // For LAN mobile testing, set CORS_ALLOWED_ORIGINS=http://localhost:4200,http://192.168.*:*,http://10.*:*
             config.setAllowedOriginPatterns(List.of(origins.split(",")));
         } else {
-            // Secure default: only Angular dev server on localhost
-            config.setAllowedOriginPatterns(List.of("http://localhost:4200"));
+            // Dev default: localhost + LAN (for mobile testing)
+            config.setAllowedOriginPatterns(List.of(
+                "http://localhost:4200",
+                "http://localhost:*",
+                "http://192.168.*:*",
+                "http://10.*:*",
+                "http://172.16.*:*"
+            ));
         }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

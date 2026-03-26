@@ -2,15 +2,23 @@ package com.schedy.service;
 
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
+import com.schedy.dto.request.ChangePasswordRequest;
 import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
+import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AuthResponse;
+import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.entity.User;
+import com.schedy.exception.BusinessRuleException;
+import com.schedy.exception.ResourceNotFoundException;
+import com.schedy.repository.EmployeRepository;
+import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final EmployeRepository employeRepository;
+    private final OrganisationRepository organisationRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
@@ -85,7 +95,7 @@ public class AuthService {
         userRepository.save(user);
         log.info("New user registered: {} with role {}", request.email(), role);
 
-        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId());
+        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     @Transactional
@@ -127,7 +137,7 @@ public class AuthService {
         userRepository.save(user);
         log.info("User logged in: {}", user.getEmail());
 
-        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId());
+        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     private void recordFailedAttempt(String email) {
@@ -168,7 +178,7 @@ public class AuthService {
         userRepository.save(user);
         log.debug("Token refreshed for: {}", email);
 
-        return new AuthResponse(newAccessToken, newRefreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId());
+        return new AuthResponse(newAccessToken, newRefreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     @Transactional
@@ -179,6 +189,83 @@ public class AuthService {
             userRepository.save(user);
             log.info("User logged out: {}", user.getEmail());
         });
+    }
+
+    /**
+     * Returns the profile of the currently authenticated user.
+     */
+    @Transactional(readOnly = true)
+    public UserProfileResponse getCurrentProfile() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+        return toProfileResponse(user);
+    }
+
+    /**
+     * Changes the password of the currently authenticated user.
+     * The current password must be provided for verification.
+     */
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new BusinessRuleException("Le mot de passe actuel est incorrect");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+        log.info("Password changed for user: {}", email);
+    }
+
+    /**
+     * Updates the display name of the currently authenticated user.
+     * If the user is linked to an employee record, the employee's name is also synced.
+     */
+    @Transactional
+    public UserProfileResponse updateProfile(UpdateProfileRequest request) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+
+        if (request.nom() != null && !request.nom().isBlank()) {
+            user.setNom(request.nom().trim());
+            // Keep the linked employee record in sync if one exists
+            if (user.getEmployeId() != null) {
+                employeRepository.findById(user.getEmployeId()).ifPresent(emp -> {
+                    emp.setNom(request.nom().trim());
+                    employeRepository.save(emp);
+                });
+            }
+        }
+
+        userRepository.save(user);
+        log.info("Profile updated for user: {}", email);
+        return toProfileResponse(user);
+    }
+
+    private UserProfileResponse toProfileResponse(User user) {
+        return new UserProfileResponse(
+                user.getEmail(),
+                user.getRole().name(),
+                user.getNom(),
+                user.getOrganisationId(),
+                user.getEmployeId()
+        );
+    }
+
+    /**
+     * Loads the ISO alpha-2 country code for the given organisation.
+     * Returns null for SUPERADMIN (no organisation) or if not set.
+     */
+    private String resolveOrgPays(String organisationId) {
+        if (organisationId == null) return null;
+        return organisationRepository.findById(organisationId)
+                .map(org -> org.getPays())
+                .orElse(null);
     }
 
     // B-16: Delegate to CryptoUtil to avoid duplicating SHA-256 logic with PointageCodeService

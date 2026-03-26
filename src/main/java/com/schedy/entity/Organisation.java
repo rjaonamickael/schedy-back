@@ -25,6 +25,9 @@ public class Organisation {
 
     private String telephone;
 
+    @Column(length = 3)
+    private String pays;
+
     // Added by V7 migration — platform-level metadata
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

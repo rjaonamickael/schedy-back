@@ -5,6 +5,7 @@ import com.schedy.dto.EmployeDto;
 import com.schedy.entity.Employe;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
+import com.schedy.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,6 +33,7 @@ import static org.mockito.Mockito.lenient;
 class EmployeServiceTest {
 
     @Mock private EmployeRepository employeRepository;
+    @Mock private UserRepository userRepository;
     @Mock private TenantContext tenantContext;
     @Mock private CreneauAssigneRepository creneauAssigneRepository;
     @Mock private PointageRepository pointageRepository;

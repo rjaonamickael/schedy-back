@@ -50,6 +50,7 @@ public class OrganisationService {
                 .domaine(dto.domaine())
                 .adresse(dto.adresse())
                 .telephone(dto.telephone())
+                .pays(dto.pays())
                 .build();
         return organisationRepository.save(organisation);
     }
@@ -61,6 +62,7 @@ public class OrganisationService {
         organisation.setDomaine(dto.domaine());
         organisation.setAdresse(dto.adresse());
         organisation.setTelephone(dto.telephone());
+        organisation.setPays(dto.pays());
         return organisationRepository.save(organisation);
     }
 
