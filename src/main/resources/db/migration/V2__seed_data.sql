@@ -382,7 +382,7 @@ BEGIN
         (gen_random_uuid(), 'comp-2',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
         (gen_random_uuid(), 'comp-3',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
         (gen_random_uuid(), 'comp-4',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
-        (gen_random_uuid(), 'comp-5',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
+        (gen_random_uuid(), 'comp-5',  v_tc_cp_comp, 20, 2, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
         (gen_random_uuid(), 'comp-6',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
         (gen_random_uuid(), 'comp-7',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
         (gen_random_uuid(), 'comp-8',  v_tc_cp_comp, 20, 0, 0, '2026-01-01', '2026-12-31', v_org_comp_id, 0),
@@ -471,10 +471,14 @@ BEGIN
     SELECT gen_random_uuid(), emp, j, hd, hf, v_semaine, v_site_bs, v_org_comp_id
     FROM (VALUES
         ('comp-6', 9, 17),
-        ('comp-5', 9, 17),
         ('comp-7', 9, 17)
     ) AS t(emp, hd, hf)
     CROSS JOIN generate_series(1, 5) AS j;
+
+    -- comp-5 (Isabelle Bouchard): Lundi-Mercredi seulement (jeudi-vendredi en congé)
+    INSERT INTO creneau_assigne (id, employe_id, jour, heure_debut, heure_fin, semaine, site_id, organisation_id)
+    SELECT gen_random_uuid(), 'comp-5', j, 9, 17, v_semaine, v_site_bs, v_org_comp_id
+    FROM generate_series(1, 3) AS j;
 
     -- Zone Industrielle Company — Lundi à Vendredi
     INSERT INTO creneau_assigne (id, employe_id, jour, heure_debut, heure_fin, semaine, site_id, organisation_id)
@@ -542,10 +546,15 @@ BEGIN
         (gen_random_uuid(), 'comp-2', v_tc_cp_comp,
          v_today + 14, v_today + 18,
          5, 'en_attente', 'Voyage personnel', v_org_comp_id),
-        -- Ratsimba Koto (comp-9): Arrêt maladie 2 jours il y a 2 jours (approuvé)
+        -- Nicolas Bergeron (comp-9): Arrêt maladie 2 jours semaine dernière (approuvé)
         (gen_random_uuid(), 'comp-9', v_tc_am_comp,
-         v_today - 2, v_today - 1,
+         v_today - 9, v_today - 8,
          2, 'approuve', 'Certificat medical fourni', v_org_comp_id),
+        -- Alexandre Côté (comp-5): Congé payé jeudi-vendredi cette semaine (approuvé)
+        (gen_random_uuid(), 'comp-5', v_tc_cp_comp,
+         v_today + (4 - extract(isodow from v_today)::int),
+         v_today + (5 - extract(isodow from v_today)::int),
+         2, 'approuve', 'Week-end prolongé', v_org_comp_id),
         -- Andrianaivo Tiana (comp-7): 1 jour congé payé dans 8 jours (refusé)
         (gen_random_uuid(), 'comp-7', v_tc_cp_comp,
          v_today + 8, v_today + 8,

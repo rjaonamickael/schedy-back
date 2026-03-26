@@ -5,8 +5,11 @@ import com.schedy.entity.StatutDemande;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,4 +30,14 @@ public interface DemandeCongeRepository extends JpaRepository<DemandeConge, Stri
     List<DemandeConge> findByTypeCongeIdAndStatutAndOrganisationId(String typeCongeId, StatutDemande statut, String organisationId);
     void deleteByTypeCongeIdAndOrganisationId(String typeCongeId, String organisationId);
     List<DemandeConge> findByOrganisationIdAndStatut(String organisationId, StatutDemande statut);
+
+    /** Count pending leave requests for a given employee. */
+    long countByEmployeIdAndOrganisationIdAndStatut(String employeId, String organisationId, StatutDemande statut);
+
+    /**
+     * Count approved leave requests that have not yet ended (dateFin >= today).
+     * These represent scheduled absences that would be orphaned after deletion.
+     */
+    @Query("SELECT COUNT(d) FROM DemandeConge d WHERE d.employeId = :employeId AND d.organisationId = :orgId AND d.statut = :statut AND d.dateFin >= :today")
+    long countApprovedFutureByEmployeId(@Param("employeId") String employeId, @Param("orgId") String orgId, @Param("statut") StatutDemande statut, @Param("today") LocalDate today);
 }

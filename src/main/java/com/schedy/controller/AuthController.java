@@ -3,6 +3,7 @@ package com.schedy.controller;
 import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
+import com.schedy.dto.request.SetPasswordRequest;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.service.AuthService;
 import jakarta.validation.Valid;
@@ -10,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -37,5 +40,16 @@ public class AuthController {
     public ResponseEntity<Void> logout(@RequestBody RefreshRequest request) {
         authService.logout(request.refreshToken());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/validate-invitation")
+    public ResponseEntity<Map<String, String>> validateInvitation(@RequestParam String token) {
+        return ResponseEntity.ok(authService.validateInvitationToken(token));
+    }
+
+    @PostMapping("/set-password")
+    public ResponseEntity<Void> setPassword(@Valid @RequestBody SetPasswordRequest request) {
+        authService.setPasswordFromInvitation(request);
+        return ResponseEntity.ok().build();
     }
 }

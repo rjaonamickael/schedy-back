@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "app_user", indexes = {
     @Index(name = "idx_user_org", columnList = "organisationId")
@@ -36,6 +38,16 @@ public class User {
     private String organisationId;
 
     private String refreshToken;
+
+    @Column(name = "invitation_token", length = 64)
+    private String invitationToken;
+
+    @Column(name = "invitation_token_expires_at")
+    private Instant invitationTokenExpiresAt;
+
+    @Column(name = "password_set", nullable = false)
+    @Builder.Default
+    private boolean passwordSet = false;
 
     public enum UserRole {
         SUPERADMIN, ADMIN, MANAGER, EMPLOYEE

@@ -1,14 +1,19 @@
 package com.schedy.controller;
 
 import com.schedy.dto.request.ChangePasswordRequest;
+import com.schedy.dto.request.InviteAdminRequest;
 import com.schedy.dto.request.UpdateProfileRequest;
+import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/user")
@@ -48,6 +53,53 @@ public class UserController {
     @PostMapping("/change-password")
     public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         authService.changePassword(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * GET /api/v1/user/admin/users
+     * Lists all admin users in the current organisation.
+     * Restricted to ADMIN role.
+     */
+    @GetMapping("/admin/users")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<AdminUserResponse>> listAdminUsers() {
+        return ResponseEntity.ok(authService.listAdminUsers());
+    }
+
+    /**
+     * POST /api/v1/user/admin/users/invite
+     * Invites a new admin user to the current organisation.
+     * Restricted to ADMIN role.
+     */
+    @PostMapping("/admin/users/invite")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AdminUserResponse> inviteAdmin(@Valid @RequestBody InviteAdminRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.inviteAdmin(request));
+    }
+
+    /**
+     * POST /api/v1/user/admin/users/{id}/resend-invitation
+     * Resends the invitation email to an admin user who has not yet set their password.
+     * Restricted to ADMIN role.
+     */
+    @PostMapping("/admin/users/{id}/resend-invitation")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> resendAdminInvitation(@PathVariable Long id) {
+        authService.resendAdminUserInvitation(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * DELETE /api/v1/user/admin/users/{id}
+     * Deletes an admin user from the current organisation.
+     * An admin cannot delete their own account.
+     * Restricted to ADMIN role.
+     */
+    @DeleteMapping("/admin/users/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteAdminUser(@PathVariable Long id) {
+        authService.deleteAdminUser(id);
         return ResponseEntity.noContent().build();
     }
 }

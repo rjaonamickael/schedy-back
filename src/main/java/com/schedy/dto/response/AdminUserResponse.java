@@ -1,10 +1,10 @@
 package com.schedy.dto.response;
 
-public record UserProfileResponse(
+public record AdminUserResponse(
+    Long id,
     String email,
     String role,
     String nom,
-    String organisationId,
-    String organisationName,
+    boolean passwordSet,
     String employeId
 ) {}

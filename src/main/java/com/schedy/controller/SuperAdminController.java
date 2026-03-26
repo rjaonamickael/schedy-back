@@ -56,6 +56,12 @@ public class SuperAdminController {
                 .body(superAdminService.createOrganisation(request));
     }
 
+    @PostMapping("/organisations/{id}/resend-admin-invitation")
+    public ResponseEntity<Void> resendAdminInvitation(@PathVariable String id) {
+        superAdminService.resendAdminInvitation(id);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/organisations/{id}/status")
     public ResponseEntity<OrgSummaryResponse> updateOrgStatus(
             @PathVariable String id,

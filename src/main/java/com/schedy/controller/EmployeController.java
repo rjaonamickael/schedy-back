@@ -3,6 +3,7 @@ package com.schedy.controller;
 import com.schedy.dto.EmployeDto;
 import com.schedy.dto.request.FindByPinRequest;
 import com.schedy.dto.request.UpdateSystemRoleRequest;
+import com.schedy.dto.response.EmployeImpactResponse;
 import com.schedy.dto.response.EmployeResponse;
 import com.schedy.entity.User;
 import com.schedy.service.EmployeService;
@@ -116,23 +117,42 @@ public class EmployeController {
 
     /**
      * Promotes or demotes an employee's system role.
-     * Accepts: systemRole = "MANAGER" | "EMPLOYEE", tempPassword (optional; auto-generated if absent).
+     * Accepts: systemRole = "MANAGER" | "EMPLOYEE".
      *
-     * When a new User account is created (promotion only), the response body contains:
-     *   { "tempPassword": "<generated-password>" }
-     * so the admin can hand it to the new manager immediately.
+     * When a new User account is created (promotion only), an invitation email is sent
+     * and the response body contains: { "emailSent": true, "email": "..." }.
      * If the account already existed, or the operation is a demotion, returns 204 No Content.
      */
     @PutMapping("/{id}/system-role")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, String>> updateSystemRole(
+    public ResponseEntity<Map<String, Object>> updateSystemRole(
             @PathVariable String id,
             @Valid @RequestBody UpdateSystemRoleRequest request) {
-        String tempPassword = employeService.updateSystemRole(id, request);
-        if (tempPassword != null) {
-            return ResponseEntity.ok(Map.of("tempPassword", tempPassword));
+        Map<String, Object> result = employeService.updateSystemRole(id, request);
+        if (result != null) {
+            return ResponseEntity.ok(result);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/resend-invitation")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> resendInvitation(@PathVariable String id) {
+        employeService.resendInvitation(id);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Returns a lightweight impact summary for the given employee.
+     * Called by the frontend BEFORE showing the deletion confirmation dialog
+     * so the user is informed of what will be hard-deleted.
+     *
+     * Restricted to ADMIN because only admins can delete employees.
+     */
+    @GetMapping("/{id}/impact")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EmployeImpactResponse> getImpact(@PathVariable String id) {
+        return ResponseEntity.ok(employeService.getImpact(id));
     }
 
     @DeleteMapping("/{id}")

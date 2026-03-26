@@ -3,9 +3,12 @@ package com.schedy.service;
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.ChangePasswordRequest;
+import com.schedy.dto.request.InviteAdminRequest;
 import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
+import com.schedy.dto.request.SetPasswordRequest;
 import com.schedy.dto.request.UpdateProfileRequest;
+import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.entity.User;
@@ -17,6 +20,7 @@ import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,7 +28,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,6 +44,10 @@ public class AuthService {
     private final OrganisationRepository organisationRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final EmailService emailService;
+
+    @Value("${schedy.invitation.expiry-hours:24}")
+    private int invitationExpiryHours;
 
     // B-H16: Per-account lockout after repeated failed login attempts.
     // 5 failures within 15 minutes = account locked for 15 minutes.
@@ -59,7 +69,8 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalStateException("Un utilisateur avec cet email existe déjà");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un utilisateur avec cet email existe d\u00e9j\u00e0 / A user with this email already exists");
         }
 
         User.UserRole role = User.UserRole.EMPLOYEE;
@@ -67,14 +78,14 @@ public class AuthService {
             try {
                 role = User.UserRole.valueOf(request.role().toUpperCase());
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Rôle invalide : " + request.role());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "R\u00f4le invalide : " + request.role());
             }
         }
         if (role == User.UserRole.SUPERADMIN) {
-            throw new IllegalArgumentException("L'inscription en tant que SUPERADMIN n'est pas autorisée.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "L'inscription en tant que SUPERADMIN n'est pas autoris\u00e9e.");
         }
         if (role == User.UserRole.ADMIN || role == User.UserRole.MANAGER) {
-            throw new IllegalArgumentException("L'inscription en tant qu'" + role + " n'est pas autorisée. Contactez un administrateur.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "L'inscription en tant qu'" + role + " n'est pas autoris\u00e9e. Contactez un administrateur.");
         }
 
         // Self-registration must NOT allow joining an arbitrary organisation.
@@ -217,6 +228,7 @@ public class AuthService {
         }
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
+        user.setPasswordSet(true);
         userRepository.save(user);
         log.info("Password changed for user: {}", email);
     }
@@ -248,11 +260,18 @@ public class AuthService {
     }
 
     private UserProfileResponse toProfileResponse(User user) {
+        String orgName = null;
+        if (user.getOrganisationId() != null) {
+            orgName = organisationRepository.findById(user.getOrganisationId())
+                    .map(org -> org.getNom())
+                    .orElse(null);
+        }
         return new UserProfileResponse(
                 user.getEmail(),
                 user.getRole().name(),
                 user.getNom(),
                 user.getOrganisationId(),
+                orgName,
                 user.getEmployeId()
         );
     }
@@ -266,6 +285,180 @@ public class AuthService {
         return organisationRepository.findById(organisationId)
                 .map(org -> org.getPays())
                 .orElse(null);
+    }
+
+    /**
+     * Validates an invitation token and returns the employee name and email.
+     * Used by the frontend to verify the token before showing the password form.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, String> validateInvitationToken(String rawToken) {
+        String hashedToken = CryptoUtil.sha256(rawToken);
+        User user = userRepository.findByInvitationToken(hashedToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token invalide ou expire"));
+
+        if (user.getInvitationTokenExpiresAt() == null || user.getInvitationTokenExpiresAt().isBefore(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token invalide ou expire");
+        }
+
+        return Map.of(
+                "name", user.getNom() != null ? user.getNom() : "",
+                "email", user.getEmail()
+        );
+    }
+
+    /**
+     * Sets the password for a user using a valid invitation token.
+     * The token is single-use and cleared after successful password set.
+     */
+    @Transactional
+    public void setPasswordFromInvitation(SetPasswordRequest request) {
+        String hashedToken = CryptoUtil.sha256(request.token());
+        User user = userRepository.findByInvitationToken(hashedToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token invalide ou expire"));
+
+        if (user.getInvitationTokenExpiresAt() == null || user.getInvitationTokenExpiresAt().isBefore(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token invalide ou expire");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.password()));
+        user.setInvitationToken(null);
+        user.setInvitationTokenExpiresAt(null);
+        user.setPasswordSet(true);
+        userRepository.save(user);
+        log.info("Password set via invitation token for user: {}", user.getEmail());
+    }
+
+    /**
+     * Returns all ADMIN users belonging to the current organisation.
+     * Accessible only to authenticated ADMIN users.
+     */
+    @Transactional(readOnly = true)
+    public List<AdminUserResponse> listAdminUsers() {
+        String orgId = getCurrentOrgId();
+        return userRepository.findAllByOrganisationId(orgId).stream()
+                .filter(u -> u.getRole() == User.UserRole.ADMIN)
+                .map(u -> new AdminUserResponse(u.getId(), u.getEmail(), u.getRole().name(), u.getNom(), u.isPasswordSet(), u.getEmployeId()))
+                .toList();
+    }
+
+    /**
+     * Creates a new ADMIN user for the current organisation and sends them an invitation email.
+     * The new user will not have a password until they follow the invitation link.
+     */
+    @Transactional
+    public AdminUserResponse inviteAdmin(InviteAdminRequest request) {
+        String orgId = getCurrentOrgId();
+        if (userRepository.existsByEmail(request.email())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Un utilisateur avec cet email existe déjà");
+        }
+        String rawToken = generateSecureToken();
+        String hashedToken = CryptoUtil.sha256(rawToken);
+        User newAdmin = User.builder()
+                .email(request.email())
+                .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
+                .role(User.UserRole.ADMIN)
+                .nom(request.nom())
+                .organisationId(orgId)
+                .invitationToken(hashedToken)
+                .invitationTokenExpiresAt(Instant.now().plus(Duration.ofHours(invitationExpiryHours)))
+                .build();
+        userRepository.save(newAdmin);
+        try {
+            boolean isFrench = resolveIsFrench(orgId);
+            String orgName = organisationRepository.findById(orgId).map(o -> o.getNom()).orElse("Schedy");
+            emailService.sendAdminInvitationEmail(request.email(), orgName, rawToken, isFrench);
+        } catch (Exception e) {
+            log.error("Failed to send admin invitation to {}: {}", request.email(), e.getMessage());
+        }
+        return new AdminUserResponse(newAdmin.getId(), newAdmin.getEmail(), newAdmin.getRole().name(), newAdmin.getNom(), newAdmin.isPasswordSet(), newAdmin.getEmployeId());
+    }
+
+    /**
+     * Regenerates the invitation token for an existing ADMIN user and resends the invitation email.
+     * Resets passwordSet to false so the user must go through the invitation flow again.
+     */
+    @Transactional
+    public void resendAdminUserInvitation(Long userId) {
+        String orgId = getCurrentOrgId();
+        User user = userRepository.findById(userId)
+                .filter(u -> orgId.equals(u.getOrganisationId()) && u.getRole() == User.UserRole.ADMIN)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé"));
+        String rawToken = generateSecureToken();
+        user.setInvitationToken(CryptoUtil.sha256(rawToken));
+        user.setInvitationTokenExpiresAt(Instant.now().plus(Duration.ofHours(invitationExpiryHours)));
+        user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        user.setPasswordSet(false);
+        userRepository.save(user);
+        String orgName = organisationRepository.findById(orgId).map(o -> o.getNom()).orElse("Schedy");
+        boolean isFrench = resolveIsFrench(orgId);
+        emailService.sendAdminInvitationEmail(user.getEmail(), orgName, rawToken, isFrench);
+        log.info("Admin invitation resent to {} by {}", user.getEmail(),
+                SecurityContextHolder.getContext().getAuthentication().getName());
+    }
+
+    /**
+     * Permanently deletes an ADMIN user from the current organisation.
+     * An admin cannot delete their own account, and only ADMIN-role users may be deleted via this method.
+     */
+    @Transactional
+    public void deleteAdminUser(Long userId) {
+        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé"));
+        String orgId = getCurrentOrgId();
+        if (!orgId.equals(user.getOrganisationId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Accès refusé");
+        }
+        if (user.getEmail().equals(currentEmail)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vous ne pouvez pas supprimer votre propre compte");
+        }
+        if (user.getRole() != User.UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cet utilisateur n'est pas un administrateur");
+        }
+        userRepository.delete(user);
+        log.info("Admin user {} deleted by {}", user.getEmail(), currentEmail);
+    }
+
+    /**
+     * Resolves the organisationId of the currently authenticated user.
+     * Throws 401 if the user is not found and 403 if they have no organisation.
+     */
+    private String getCurrentOrgId() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        if (currentUser.getOrganisationId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Aucune organisation associée");
+        }
+        return currentUser.getOrganisationId();
+    }
+
+    /**
+     * Returns true if the organisation's country code corresponds to a French-speaking country.
+     * Falls back to false when the organisation is not found or pays is null.
+     */
+    private boolean resolveIsFrench(String orgId) {
+        return organisationRepository.findById(orgId)
+                .map(org -> {
+                    String pays = org.getPays();
+                    if (pays == null) return false;
+                    String p = pays.toUpperCase();
+                    return p.startsWith("FR") || "MDG".equals(p) || "MG".equals(p)
+                            || "BE".equals(p) || "CH".equals(p) || "CA".equals(p) || "CAN".equals(p);
+                })
+                .orElse(false);
+    }
+
+    /**
+     * Generates a cryptographically secure random 64-character hex token.
+     */
+    private String generateSecureToken() {
+        byte[] bytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     // B-16: Delegate to CryptoUtil to avoid duplicating SHA-256 logic with PointageCodeService

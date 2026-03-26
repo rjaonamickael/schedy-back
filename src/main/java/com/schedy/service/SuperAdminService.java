@@ -42,6 +42,10 @@ public class SuperAdminService {
     private final ImpersonationLogRepository     impersonationLogRepository;
     private final PasswordEncoder          passwordEncoder;
     private final JwtUtil                  jwtUtil;
+    private final EmailService             emailService;
+
+    @org.springframework.beans.factory.annotation.Value("${schedy.invitation.expiry-hours:24}")
+    private int invitationExpiryHours;
 
     // =========================================================================
     // DASHBOARD
@@ -111,20 +115,36 @@ public class SuperAdminService {
         // Create the first ADMIN user for this organisation
         if (userRepository.existsByEmail(request.adminEmail())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Un utilisateur avec cet email existe déjà : " + request.adminEmail());
+                    "Un utilisateur avec cet email existe d\u00e9j\u00e0 : " + request.adminEmail());
         }
+        String rawToken = generateSecureToken();
+        String hashedToken = com.schedy.util.CryptoUtil.sha256(rawToken);
         User admin = User.builder()
                 .email(request.adminEmail())
-                .password(passwordEncoder.encode(request.adminPassword()))
+                .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
                 .role(User.UserRole.ADMIN)
                 .organisationId(org.getId())
+                .invitationToken(hashedToken)
+                .invitationTokenExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(invitationExpiryHours)))
                 .build();
         userRepository.save(admin);
 
-        // Create a FREE subscription for the new organisation
+        // Send admin invitation email (best-effort)
+        try {
+            boolean isFrench = resolveIsFrench(org);
+            emailService.sendAdminInvitationEmail(request.adminEmail(), org.getNom(), rawToken, isFrench);
+        } catch (Exception e) {
+            log.error("Failed to send admin invitation email to {}: {}", request.adminEmail(), e.getMessage());
+        }
+
+        Subscription.PlanTier tier = Subscription.PlanTier.FREE;
+        if (request.planTier() != null && !request.planTier().isBlank()) {
+            try { tier = Subscription.PlanTier.valueOf(request.planTier().toUpperCase()); }
+            catch (IllegalArgumentException ignored) {}
+        }
         Subscription sub = Subscription.builder()
                 .organisationId(org.getId())
-                .planTier(Subscription.PlanTier.FREE)
+                .planTier(tier)
                 .status(Subscription.SubscriptionStatus.TRIAL)
                 .trialEndsAt(OffsetDateTime.now().plusDays(30))
                 .maxEmployees(15)
@@ -444,5 +464,43 @@ public class SuperAdminService {
         } catch (IllegalArgumentException e) {
             return PlatformAnnouncement.Severity.INFO;
         }
+    }
+
+    @Transactional
+    public void resendAdminInvitation(String orgId) {
+        Organisation org = requireOrg(orgId);
+        User admin = userRepository.findAll().stream()
+                .filter(u -> orgId.equals(u.getOrganisationId()) && u.getRole() == User.UserRole.ADMIN)
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Aucun administrateur trouv\u00e9 pour cette organisation"));
+
+        String rawToken = generateSecureToken();
+        String hashedToken = com.schedy.util.CryptoUtil.sha256(rawToken);
+        admin.setInvitationToken(hashedToken);
+        admin.setInvitationTokenExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(invitationExpiryHours)));
+        admin.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        admin.setPasswordSet(false);
+        userRepository.save(admin);
+
+        boolean isFrench = resolveIsFrench(org);
+        emailService.sendAdminInvitationEmail(admin.getEmail(), org.getNom(), rawToken, isFrench);
+        log.info("Admin invitation resent for org '{}' to {}", org.getNom(), admin.getEmail());
+    }
+
+    private String generateSecureToken() {
+        byte[] bytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    private boolean resolveIsFrench(Organisation org) {
+        String pays = org.getPays();
+        if (pays == null) return false;
+        String p = pays.toUpperCase();
+        return p.startsWith("FR") || "MDG".equals(p) || "MG".equals(p)
+                || "BE".equals(p) || "CH".equals(p) || "CA".equals(p) || "CAN".equals(p);
     }
 }

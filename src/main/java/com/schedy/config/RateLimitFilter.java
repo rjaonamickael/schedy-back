@@ -43,6 +43,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Bucket> registerBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> validateBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> kioskAdminBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> invitationBuckets = new ConcurrentHashMap<>();
 
     private final Set<String> trustedProxies;
 
@@ -69,6 +70,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             bucket = kioskAdminBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofMinutes(1)));
         } else if (path.startsWith("/api/v1/pointage-codes/validate")) {
             bucket = validateBuckets.computeIfAbsent(ip, k -> createBucket(10, Duration.ofMinutes(1)));
+        } else if (path.startsWith("/api/v1/auth/set-password") || path.startsWith("/api/v1/auth/validate-invitation")) {
+            bucket = invitationBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
         }
 
         if (bucket != null && !bucket.tryConsume(1)) {
@@ -112,12 +115,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
      */
     @Scheduled(fixedRate = 300_000) // 5 minutes
     public void evictBuckets() {
-        int total = loginBuckets.size() + registerBuckets.size() + validateBuckets.size() + kioskAdminBuckets.size();
+        int total = loginBuckets.size() + registerBuckets.size() + validateBuckets.size()
+                + kioskAdminBuckets.size() + invitationBuckets.size();
         if (total > 0) {
             loginBuckets.clear();
             registerBuckets.clear();
             validateBuckets.clear();
             kioskAdminBuckets.clear();
+            invitationBuckets.clear();
             log.debug("Rate limit buckets evicted ({} entries cleared)", total);
         }
     }

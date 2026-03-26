@@ -36,6 +36,10 @@ public class PlatformAnnouncement {
     @Column(name = "expires_at")
     private OffsetDateTime expiresAt;
 
+    /** Null = global (visible to all orgs). Non-null = scoped to a specific organisation. */
+    @Column(name = "organisation_id")
+    private String organisationId;
+
     public enum Severity {
         INFO, WARNING, CRITICAL
     }

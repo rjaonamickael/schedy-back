@@ -1,5 +1,6 @@
 package com.schedy.controller;
 
+import com.schedy.config.TenantContext;
 import com.schedy.entity.PlatformAnnouncement;
 import com.schedy.repository.PlatformAnnouncementRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,9 +21,17 @@ import java.util.List;
 public class AnnouncementsController {
 
     private final PlatformAnnouncementRepository announcementRepository;
+    private final TenantContext tenantContext;
 
     @GetMapping("/active")
     public ResponseEntity<List<PlatformAnnouncement>> getActive() {
+        String orgId = tenantContext.getOrganisationId();
+        if (orgId != null) {
+            return ResponseEntity.ok(
+                announcementRepository.findActiveNonExpiredForOrg(OffsetDateTime.now(ZoneOffset.UTC), orgId)
+            );
+        }
+        // SuperAdmin or unauthenticated-org context: return all global announcements
         return ResponseEntity.ok(
             announcementRepository.findActiveNonExpired(OffsetDateTime.now(ZoneOffset.UTC))
         );
