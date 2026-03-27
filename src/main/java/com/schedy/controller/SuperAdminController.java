@@ -6,6 +6,8 @@ import com.schedy.dto.response.OrgSummaryResponse;
 import com.schedy.dto.response.SuperAdminDashboardResponse;
 import com.schedy.entity.*;
 import com.schedy.service.SuperAdminService;
+import com.schedy.service.TotpService;
+import com.schedy.util.IpUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +17,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/superadmin")
@@ -25,6 +31,14 @@ import java.util.List;
 public class SuperAdminController {
 
     private final SuperAdminService superAdminService;
+    private final TotpService totpService;
+
+    @org.springframework.beans.factory.annotation.Value("${schedy.rate-limit.trusted-proxies:127.0.0.1,::1,0:0:0:0:0:0:0:1}")
+    private List<String> trustedProxiesList;
+
+    private Set<String> getTrustedProxies() {
+        return new HashSet<>(trustedProxiesList.stream().map(String::trim).toList());
+    }
 
     // =========================================================================
     // DASHBOARD
@@ -60,6 +74,31 @@ public class SuperAdminController {
     public ResponseEntity<Void> resendAdminInvitation(@PathVariable String id) {
         superAdminService.resendAdminInvitation(id);
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/organisations/{id}")
+    public ResponseEntity<Void> deleteOrganisation(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication authentication) {
+        String totpCode = body != null ? body.get("totpCode") : null;
+        if (totpCode == null || totpCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Le code 2FA est obligatoire pour supprimer une organisation.");
+        }
+        // Verify 2FA is enabled and code is valid
+        TotpService.TwoFaStatusResponse status = totpService.getStatus();
+        if (!status.enabled()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "La double authentification doit être activée pour supprimer une organisation.");
+        }
+        String email = authentication.getName();
+        if (!totpService.verify(email, totpCode)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Code 2FA invalide ou expiré.");
+        }
+        superAdminService.deleteOrganisation(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/organisations/{id}/status")
@@ -196,11 +235,6 @@ public class SuperAdminController {
     // =========================================================================
 
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            // X-Forwarded-For can be a comma-separated list; take the first (original client)
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        return IpUtils.resolveClientIp(request, getTrustedProxies());
     }
 }

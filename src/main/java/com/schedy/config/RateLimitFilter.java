@@ -89,23 +89,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return Bucket.builder().addLimit(limit).build();
     }
 
-    /**
-     * Resolve the client IP securely. Only trusts X-Forwarded-For when the
-     * direct connection (remoteAddr) comes from a configured trusted proxy.
-     * This prevents attackers from spoofing IPs via the header to bypass rate limiting.
-     */
     private String getClientIp(HttpServletRequest request) {
-        String remoteAddr = request.getRemoteAddr();
-
-        if (trustedProxies.contains(remoteAddr)) {
-            String xff = request.getHeader("X-Forwarded-For");
-            if (xff != null && !xff.isBlank()) {
-                // Take the leftmost (client) IP from the chain
-                return xff.split(",")[0].trim();
-            }
-        }
-
-        return remoteAddr;
+        return com.schedy.util.IpUtils.resolveClientIp(request, trustedProxies);
     }
 
     /**

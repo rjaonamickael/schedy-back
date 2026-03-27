@@ -36,4 +36,5 @@ public interface BanqueCongeRepository extends JpaRepository<BanqueConge, String
     Optional<BanqueConge> findByEmployeIdAndTypeCongeIdAndOrganisationId(String employeId, String typeCongeId, String organisationId);
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
     void deleteByTypeCongeIdAndOrganisationId(String typeCongeId, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

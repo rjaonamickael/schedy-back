@@ -12,4 +12,5 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Stri
     Optional<Subscription> findByOrganisationId(String organisationId);
     List<Subscription> findByStatus(Subscription.SubscriptionStatus status);
     List<Subscription> findByPlanTier(Subscription.PlanTier planTier);
+    void deleteByOrganisationId(String organisationId);
 }

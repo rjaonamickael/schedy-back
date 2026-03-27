@@ -36,6 +36,13 @@ public class EmailService {
         sendHtmlEmail(recipientEmail, subject, html);
     }
 
+    public void send2faCodeEmail(String recipientEmail, String recipientName, String code, int expirySeconds) {
+        String subject = "Code de v\u00e9rification Schedy / Schedy verification code";
+        String minutes = String.valueOf(expirySeconds / 60);
+        String html = build2faCodeHtml(escapeHtml(recipientName != null ? recipientName : recipientEmail), code, minutes);
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
     public void sendAdminInvitationEmail(String recipientEmail, String orgName, String rawToken, boolean isFrench) {
         String link = frontendUrl + "/set-password?token=" + rawToken;
         String subject = "Activation de votre acc\u00e8s administrateur - " + orgName + " / Administrator account activation - " + orgName;
@@ -349,6 +356,86 @@ public class EmailService {
             + "</td></tr>\n"
             + "</table>\n"
             + "</body></html>";
+    }
+
+    private String build2faCodeHtml(String name, String code, String minutes) {
+        String year = String.valueOf(java.time.Year.now().getValue());
+        // Format code with spaces: "123456" → "1 2 3 4 5 6"
+        StringBuilder spaced = new StringBuilder();
+        for (int i = 0; i < code.length(); i++) {
+            if (i > 0) spaced.append(" \u00a0 ");
+            spaced.append(code.charAt(i));
+        }
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<title>Schedy</title>\n</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;font-size:1px;color:#FFFFFF;\">"
+            + "Votre code : " + code + " / Your code: " + code + "&zwnj;&nbsp;&zwnj;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            // FR
+            + "<tr><td style=\"padding:0 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 8px;font-size:20px;font-weight:700;color:#1F2937;\">V\u00e9rification de connexion</p>\n"
+            + "<p style=\"margin:0 0 6px;font-size:15px;color:#4B5563;line-height:1.65;\">Bonjour " + name + ",</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Une tentative de connexion a \u00e9t\u00e9 d\u00e9tect\u00e9e sur votre compte Schedy. "
+            + "Veuillez saisir le code ci-dessous pour confirmer votre identit\u00e9\u00a0:</p>\n"
+            // Code display
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
+            + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
+            + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.3em;"
+            + "font-family:'Courier New',monospace;\">" + spaced + "</span>\n"
+            + "</div>\n"
+            + "</td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
+            + "Ce code est valable <strong>" + minutes + " minutes</strong>. "
+            + "Si vous n\u2019\u00eates pas \u00e0 l\u2019origine de cette connexion, ignorez cet email.</p>\n"
+            + "</td></tr>\n"
+
+            // Separator
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            // EN
+            + "<tr><td style=\"padding:24px 32px;\">\n"
+            + "<p style=\"margin:0 0 8px;font-size:20px;font-weight:700;color:#1F2937;\">Login verification</p>\n"
+            + "<p style=\"margin:0 0 6px;font-size:15px;color:#4B5563;line-height:1.65;\">Dear " + name + ",</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "A login attempt has been detected on your Schedy account. "
+            + "Please enter the code below to verify your identity:</p>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
+            + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
+            + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.3em;"
+            + "font-family:'Courier New',monospace;\">" + spaced + "</span>\n"
+            + "</div>\n"
+            + "</td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
+            + "This code is valid for <strong>" + minutes + " minutes</strong>. "
+            + "If you did not initiate this login, please ignore this email.</p>\n"
+            + "</td></tr>\n"
+
+            // Footer
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td><td align=\"right\" style=\"font-size:11px;color:#D1D5DB;\">\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n</td></tr>\n"
+            + "</table>\n</body></html>";
     }
 
     private String buildFeatureRow(String dotColor, String text) {

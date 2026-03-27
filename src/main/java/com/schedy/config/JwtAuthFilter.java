@@ -42,7 +42,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = authHeader.substring(7);
 
-        if (jwtUtil.isTokenValid(token) && !jwtUtil.isRefreshToken(token)) {
+        // Reject refresh tokens and 2FA-pending tokens — neither must establish a security context.
+        if (jwtUtil.isTokenValid(token)
+                && !jwtUtil.isRefreshToken(token)
+                && !jwtUtil.is2faPendingToken(token)) {
             String email = jwtUtil.extractEmail(token);
             String role = jwtUtil.extractRole(token);
             String organisationId = jwtUtil.extractOrganisationId(token);

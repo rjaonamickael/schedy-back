@@ -39,6 +39,7 @@ public interface CreneauAssigneRepository extends JpaRepository<CreneauAssigne, 
     void deleteBySemaineAndSiteIdAndOrganisationId(String semaine, String siteId, String organisationId);
     Page<CreneauAssigne> findBySiteIdAndOrganisationId(String siteId, String organisationId, Pageable pageable);
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 
     /** Count shifts for a given employee in a specific week (current week). */
     long countByEmployeIdAndOrganisationIdAndSemaine(String employeId, String organisationId, String semaine);

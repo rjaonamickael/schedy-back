@@ -49,6 +49,30 @@ public class User {
     @Builder.Default
     private boolean passwordSet = false;
 
+    // ── TOTP 2FA ──
+
+    @Column(name = "totp_secret_encrypted", length = 512)
+    private String totpSecretEncrypted;
+
+    @Column(name = "totp_enabled", nullable = false)
+    @Builder.Default
+    private boolean totpEnabled = false;
+
+    /**
+     * The last accepted TOTP code — persisted to prevent immediate replay attacks.
+     * A valid code is rejected if it matches this value.
+     */
+    @Column(name = "totp_last_used_otp", length = 6)
+    private String totpLastUsedOtp;
+
+    // ── Email 2FA code ──
+
+    @Column(name = "email_2fa_code_hash", length = 64)
+    private String email2faCodeHash;
+
+    @Column(name = "email_2fa_code_expires_at")
+    private Instant email2faCodeExpiresAt;
+
     public enum UserRole {
         SUPERADMIN, ADMIN, MANAGER, EMPLOYEE
     }

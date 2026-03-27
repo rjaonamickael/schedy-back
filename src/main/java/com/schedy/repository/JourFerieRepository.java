@@ -19,4 +19,5 @@ public interface JourFerieRepository extends JpaRepository<JourFerie, String> {
     Page<JourFerie> findByOrganisationId(String organisationId, Pageable pageable);
     List<JourFerie> findByOrganisationId(String organisationId);
     Optional<JourFerie> findByIdAndOrganisationId(String id, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

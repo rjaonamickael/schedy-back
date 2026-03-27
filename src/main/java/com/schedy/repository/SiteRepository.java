@@ -21,4 +21,5 @@ public interface SiteRepository extends JpaRepository<Site, String> {
     // Organisation-scoped queries
     Page<Site> findByOrganisationId(String organisationId, Pageable pageable);
     Optional<Site> findByIdAndOrganisationId(String id, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

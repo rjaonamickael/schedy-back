@@ -26,6 +26,7 @@ public interface DemandeCongeRepository extends JpaRepository<DemandeConge, Stri
     Optional<DemandeConge> findByIdAndOrganisationId(String id, String organisationId);
     List<DemandeConge> findByEmployeIdAndOrganisationId(String employeId, String organisationId);
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
+    void deleteByOrganisationId(String organisationId);
     List<DemandeConge> findByTypeCongeIdAndOrganisationId(String typeCongeId, String organisationId);
     List<DemandeConge> findByTypeCongeIdAndStatutAndOrganisationId(String typeCongeId, StatutDemande statut, String organisationId);
     void deleteByTypeCongeIdAndOrganisationId(String typeCongeId, String organisationId);

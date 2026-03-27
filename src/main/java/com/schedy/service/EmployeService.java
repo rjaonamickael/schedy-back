@@ -418,8 +418,13 @@ public class EmployeService {
         userRepository.save(user);
 
         boolean isFrench = resolveIsFrench(orgId);
-        emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken, isFrench);
-        log.info("Invitation email resent to {} for employee {}", employe.getEmail(), employeId);
+        try {
+            emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken, isFrench);
+            log.info("Invitation email resent to {} for employee {}", employe.getEmail(), employeId);
+        } catch (Exception e) {
+            log.error("Failed to resend invitation email to {} for employee {}: {}",
+                    employe.getEmail(), employeId, e.getMessage());
+        }
     }
 
     /**

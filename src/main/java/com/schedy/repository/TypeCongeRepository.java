@@ -17,4 +17,5 @@ public interface TypeCongeRepository extends JpaRepository<TypeConge, String> {
     Page<TypeConge> findByOrganisationId(String organisationId, Pageable pageable);
     List<TypeConge> findByOrganisationId(String organisationId);
     Optional<TypeConge> findByIdAndOrganisationId(String id, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

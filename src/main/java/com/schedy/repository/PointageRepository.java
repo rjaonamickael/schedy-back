@@ -46,6 +46,7 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     Optional<Pointage> findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String siteId, String organisationId);
     List<Pointage> findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String employeId, String organisationId, OffsetDateTime start, OffsetDateTime end);
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 
     /** Count all time-clock records for a given employee regardless of statut. */
     long countByEmployeIdAndOrganisationId(String employeId, String organisationId);

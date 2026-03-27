@@ -22,4 +22,6 @@ public interface PlatformAnnouncementRepository extends JpaRepository<PlatformAn
      */
     @Query("SELECT a FROM PlatformAnnouncement a WHERE a.active = true AND (a.expiresAt IS NULL OR a.expiresAt > :now) AND (a.organisationId IS NULL OR a.organisationId = :orgId) ORDER BY a.createdAt DESC")
     List<PlatformAnnouncement> findActiveNonExpiredForOrg(@Param("now") OffsetDateTime now, @Param("orgId") String orgId);
+
+    void deleteByOrganisationId(String organisationId);
 }

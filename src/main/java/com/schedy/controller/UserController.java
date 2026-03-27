@@ -6,6 +6,7 @@ import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.service.AuthService;
+import com.schedy.service.TotpService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/user")
@@ -22,6 +24,7 @@ import java.util.List;
 public class UserController {
 
     private final AuthService authService;
+    private final TotpService totpService;
 
     /**
      * GET /api/v1/user/profile
@@ -100,6 +103,33 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteAdminUser(@PathVariable Long id) {
         authService.deleteAdminUser(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 2FA setup / management (requires full authentication)
+    // ─────────────────────────────────────────────────────────────────
+
+    @GetMapping("/2fa/status")
+    public ResponseEntity<TotpService.TwoFaStatusResponse> get2faStatus() {
+        return ResponseEntity.ok(totpService.getStatus());
+    }
+
+    @PostMapping("/2fa/setup")
+    public ResponseEntity<TotpService.SetupResponse> setup2fa() {
+        return ResponseEntity.ok(totpService.setup());
+    }
+
+    @PostMapping("/2fa/setup/confirm")
+    public ResponseEntity<List<String>> confirm2faSetup(@RequestBody Map<String, String> body) {
+        String code = body.get("code");
+        return ResponseEntity.ok(totpService.confirmSetup(code));
+    }
+
+    @DeleteMapping("/2fa")
+    public ResponseEntity<Void> disable2fa(@RequestBody Map<String, String> body) {
+        String code = body.get("code");
+        totpService.disable(code);
         return ResponseEntity.noContent().build();
     }
 }

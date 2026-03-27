@@ -49,6 +49,9 @@ public class AuthService {
     @Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
 
+    @Value("${schedy.email-2fa.code-expiry-seconds:300}")
+    private int email2faCodeExpirySeconds;
+
     // B-H16: Per-account lockout after repeated failed login attempts.
     // 5 failures within 15 minutes = account locked for 15 minutes.
     private static final int MAX_FAILED_ATTEMPTS = 5;
@@ -106,7 +109,7 @@ public class AuthService {
         userRepository.save(user);
         log.info("New user registered: {} with role {}", request.email(), role);
 
-        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     @Transactional
@@ -139,8 +142,17 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Identifiant ou mot de passe incorrect");
         }
 
-        // Successful login: clear failed attempts
+        // Successful password verification: clear failed attempts
         failedLogins.remove(email);
+
+        // If 2FA is enabled, issue a short-lived pending token and send email code.
+        if (user.isTotpEnabled()) {
+            String pendingToken = jwtUtil.generate2faPendingToken(user.getEmail());
+            // Generate and send email 2FA code
+            sendEmail2faCode(user);
+            log.info("2FA challenge issued for: {}", user.getEmail());
+            return AuthResponse.pending2fa(pendingToken, email2faCodeExpirySeconds);
+        }
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
         String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
@@ -148,7 +160,30 @@ public class AuthService {
         userRepository.save(user);
         log.info("User logged in: {}", user.getEmail());
 
-        return new AuthResponse(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+    }
+
+    /**
+     * Issues full access + refresh tokens after a successful 2FA verification step.
+     * Called by {@link com.schedy.controller.AuthController} once TotpService confirms
+     * the TOTP code or recovery code is valid.
+     *
+     * @param email the user's email (extracted from the validated pendingToken)
+     * @return a normal {@link AuthResponse} with access + refresh tokens
+     */
+    @Transactional
+    public AuthResponse completeLogin(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable"));
+
+        String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
+        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
+        user.setRefreshToken(hashToken(refreshToken));
+        userRepository.save(user);
+        log.info("2FA login completed for: {}", user.getEmail());
+
+        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(),
+                user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     private void recordFailedAttempt(String email) {
@@ -189,7 +224,7 @@ public class AuthService {
         userRepository.save(user);
         log.debug("Token refreshed for: {}", email);
 
-        return new AuthResponse(newAccessToken, newRefreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResponse.authenticated(newAccessToken, newRefreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
     }
 
     @Transactional
@@ -392,9 +427,13 @@ public class AuthService {
         userRepository.save(user);
         String orgName = organisationRepository.findById(orgId).map(o -> o.getNom()).orElse("Schedy");
         boolean isFrench = resolveIsFrench(orgId);
-        emailService.sendAdminInvitationEmail(user.getEmail(), orgName, rawToken, isFrench);
-        log.info("Admin invitation resent to {} by {}", user.getEmail(),
-                SecurityContextHolder.getContext().getAuthentication().getName());
+        try {
+            emailService.sendAdminInvitationEmail(user.getEmail(), orgName, rawToken, isFrench);
+            log.info("Admin invitation resent to {} by {}", user.getEmail(),
+                    SecurityContextHolder.getContext().getAuthentication().getName());
+        } catch (Exception e) {
+            log.error("Failed to resend admin invitation email to {}: {}", user.getEmail(), e.getMessage());
+        }
     }
 
     /**
@@ -459,6 +498,48 @@ public class AuthService {
         StringBuilder sb = new StringBuilder(64);
         for (byte b : bytes) sb.append(String.format("%02x", b));
         return sb.toString();
+    }
+
+    /**
+     * Generates a 6-digit code, stores its hash with expiry, and sends it by email.
+     */
+    private void sendEmail2faCode(User user) {
+        String code = String.format("%06d", new java.security.SecureRandom().nextInt(1_000_000));
+        user.setEmail2faCodeHash(CryptoUtil.sha256(code));
+        user.setEmail2faCodeExpiresAt(Instant.now().plusSeconds(email2faCodeExpirySeconds));
+        userRepository.save(user);
+        try {
+            emailService.send2faCodeEmail(user.getEmail(), user.getNom(), code, email2faCodeExpirySeconds);
+        } catch (Exception e) {
+            log.error("Failed to send 2FA email code to {}: {}", user.getEmail(), e.getMessage());
+        }
+    }
+
+    /**
+     * Verifies the 6-digit code sent by email during login.
+     */
+    public boolean verifyEmail2faCode(String email, String code) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        if (user.getEmail2faCodeHash() == null || user.getEmail2faCodeExpiresAt() == null) return false;
+        if (Instant.now().isAfter(user.getEmail2faCodeExpiresAt())) return false;
+        boolean valid = CryptoUtil.sha256(code).equals(user.getEmail2faCodeHash());
+        if (valid) {
+            user.setEmail2faCodeHash(null);
+            user.setEmail2faCodeExpiresAt(null);
+            userRepository.save(user);
+        }
+        return valid;
+    }
+
+    /**
+     * Resends the email 2FA code (generates a new one).
+     */
+    @Transactional
+    public void resendEmail2faCode(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        sendEmail2faCode(user);
     }
 
     // B-16: Delegate to CryptoUtil to avoid duplicating SHA-256 logic with PointageCodeService

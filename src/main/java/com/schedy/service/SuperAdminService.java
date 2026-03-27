@@ -32,17 +32,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SuperAdminService {
 
-    private final OrganisationRepository   organisationRepository;
-    private final UserRepository           userRepository;
-    private final EmployeRepository        employeRepository;
-    private final SubscriptionRepository   subscriptionRepository;
-    private final PromoCodeRepository      promoCodeRepository;
-    private final FeatureFlagRepository    featureFlagRepository;
+    private final OrganisationRepository        organisationRepository;
+    private final UserRepository                userRepository;
+    private final EmployeRepository             employeRepository;
+    private final SubscriptionRepository        subscriptionRepository;
+    private final PromoCodeRepository           promoCodeRepository;
+    private final FeatureFlagRepository         featureFlagRepository;
     private final PlatformAnnouncementRepository announcementRepository;
-    private final ImpersonationLogRepository     impersonationLogRepository;
-    private final PasswordEncoder          passwordEncoder;
-    private final JwtUtil                  jwtUtil;
-    private final EmailService             emailService;
+    private final ImpersonationLogRepository    impersonationLogRepository;
+    private final PointageRepository            pointageRepository;
+    private final PointageCodeRepository        pointageCodeRepository;
+    private final CreneauAssigneRepository      creneauAssigneRepository;
+    private final DemandeCongeRepository        demandeCongeRepository;
+    private final BanqueCongeRepository         banqueCongeRepository;
+    private final ExigenceRepository            exigenceRepository;
+    private final SiteRepository                siteRepository;
+    private final RoleRepository                roleRepository;
+    private final TypeCongeRepository           typeCongeRepository;
+    private final JourFerieRepository           jourFerieRepository;
+    private final ParametresRepository          parametresRepository;
+    private final PasswordEncoder               passwordEncoder;
+    private final JwtUtil                       jwtUtil;
+    private final EmailService                  emailService;
 
     @org.springframework.beans.factory.annotation.Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
@@ -54,10 +65,8 @@ public class SuperAdminService {
     @Transactional(readOnly = true)
     public SuperAdminDashboardResponse getDashboard() {
         long totalOrgs       = organisationRepository.count();
-        long activeOrgs      = organisationRepository.findAll().stream()
-                                  .filter(o -> "ACTIVE".equalsIgnoreCase(o.getStatus())).count();
-        long suspendedOrgs   = organisationRepository.findAll().stream()
-                                  .filter(o -> "SUSPENDED".equalsIgnoreCase(o.getStatus())).count();
+        long activeOrgs      = organisationRepository.countByStatus("ACTIVE");
+        long suspendedOrgs   = organisationRepository.countByStatus("SUSPENDED");
         long totalUsers      = userRepository.count();
         long totalEmployees  = employeRepository.count();
 
@@ -154,6 +163,34 @@ public class SuperAdminService {
 
         log.info("SuperAdmin: created organisation '{}' with admin '{}'", org.getNom(), request.adminEmail());
         return toOrgSummary(org);
+    }
+
+    @Transactional
+    public void deleteOrganisation(String id) {
+        Organisation org = requireOrg(id);
+        String orgId = org.getId();
+
+        // Cascade delete in dependency order
+        pointageRepository.deleteByOrganisationId(orgId);
+        pointageCodeRepository.deleteByOrganisationId(orgId);
+        creneauAssigneRepository.deleteByOrganisationId(orgId);
+        demandeCongeRepository.deleteByOrganisationId(orgId);
+        banqueCongeRepository.deleteByOrganisationId(orgId);
+        exigenceRepository.deleteByOrganisationId(orgId);
+        employeRepository.deleteByOrganisationId(orgId);
+        siteRepository.deleteByOrganisationId(orgId);
+        roleRepository.deleteByOrganisationId(orgId);
+        typeCongeRepository.deleteByOrganisationId(orgId);
+        jourFerieRepository.deleteByOrganisationId(orgId);
+        parametresRepository.deleteByOrganisationId(orgId);
+        userRepository.deleteByOrganisationId(orgId);
+        featureFlagRepository.deleteByOrganisationId(orgId);
+        subscriptionRepository.deleteByOrganisationId(orgId);
+        announcementRepository.deleteByOrganisationId(orgId);
+        // Keep impersonation logs for audit trail
+        organisationRepository.delete(org);
+
+        log.warn("SuperAdmin: DELETED organisation '{}' (id: {})", org.getNom(), orgId);
     }
 
     @Transactional
@@ -388,10 +425,7 @@ public class SuperAdminService {
         Organisation org = requireOrg(orgId);
 
         // Find any ADMIN user in the target organisation to use as JWT subject
-        User targetAdmin = userRepository.findAll().stream()
-                .filter(u -> orgId.equals(u.getOrganisationId())
-                          && u.getRole() == User.UserRole.ADMIN)
-                .findFirst()
+        User targetAdmin = userRepository.findFirstByOrganisationIdAndRole(orgId, User.UserRole.ADMIN)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Aucun administrateur trouvé pour l'organisation : " + orgId));
 
@@ -430,10 +464,8 @@ public class SuperAdminService {
     }
 
     private OrgSummaryResponse toOrgSummary(Organisation org) {
-        long employeeCount = employeRepository.findByOrganisationId(org.getId()).size();
-        long userCount = userRepository.findAll().stream()
-                .filter(u -> org.getId().equals(u.getOrganisationId()))
-                .count();
+        long employeeCount = employeRepository.countByOrganisationId(org.getId());
+        long userCount = userRepository.countByOrganisationId(org.getId());
 
         String promoCode = subscriptionRepository.findByOrganisationId(org.getId())
                 .flatMap(sub -> sub.getPromoCodeId() != null
@@ -469,11 +501,9 @@ public class SuperAdminService {
     @Transactional
     public void resendAdminInvitation(String orgId) {
         Organisation org = requireOrg(orgId);
-        User admin = userRepository.findAll().stream()
-                .filter(u -> orgId.equals(u.getOrganisationId()) && u.getRole() == User.UserRole.ADMIN)
-                .findFirst()
+        User admin = userRepository.findFirstByOrganisationIdAndRole(orgId, User.UserRole.ADMIN)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Aucun administrateur trouv\u00e9 pour cette organisation"));
+                        "Aucun administrateur trouvé pour cette organisation"));
 
         String rawToken = generateSecureToken();
         String hashedToken = com.schedy.util.CryptoUtil.sha256(rawToken);
@@ -484,8 +514,13 @@ public class SuperAdminService {
         userRepository.save(admin);
 
         boolean isFrench = resolveIsFrench(org);
-        emailService.sendAdminInvitationEmail(admin.getEmail(), org.getNom(), rawToken, isFrench);
-        log.info("Admin invitation resent for org '{}' to {}", org.getNom(), admin.getEmail());
+        try {
+            emailService.sendAdminInvitationEmail(admin.getEmail(), org.getNom(), rawToken, isFrench);
+            log.info("Admin invitation resent for org '{}' to {}", org.getNom(), admin.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send admin invitation email to {} for org '{}': {}",
+                    admin.getEmail(), org.getNom(), e.getMessage());
+        }
     }
 
     private String generateSecureToken() {

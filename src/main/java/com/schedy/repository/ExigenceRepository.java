@@ -26,4 +26,5 @@ public interface ExigenceRepository extends JpaRepository<Exigence, String> {
     List<Exigence> findBySiteIdAndOrganisationId(String siteId, String organisationId);
     List<Exigence> findByRoleAndOrganisationId(String role, String organisationId);
     List<Exigence> findByRoleAndSiteIdAndOrganisationId(String role, String siteId, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

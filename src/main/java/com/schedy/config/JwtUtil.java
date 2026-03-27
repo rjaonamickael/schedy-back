@@ -105,6 +105,32 @@ public class JwtUtil {
         }
     }
 
+    /**
+     * Generates a short-lived (5-minute) pending token issued after successful password
+     * verification when 2FA is enabled. The token has no role claims and carries
+     * {@code type=2fa_pending} to distinguish it from normal access tokens.
+     *
+     * @param email the authenticated user's email
+     * @return a signed JWT valid for 5 minutes
+     */
+    public String generate2faPendingToken(String email) {
+        return buildToken(email, Map.of("type", "2fa_pending"), 5 * 60 * 1000L);
+    }
+
+    /**
+     * Returns true if the token is a valid, unexpired 2FA-pending token.
+     *
+     * @param token the JWT to inspect
+     * @return true iff {@code type} claim equals {@code "2fa_pending"}
+     */
+    public boolean is2faPendingToken(String token) {
+        try {
+            return "2fa_pending".equals(parseClaims(token).get("type", String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     private Claims parseClaims(String token) {
         return Jwts.parser()
                 .verifyWith(key)

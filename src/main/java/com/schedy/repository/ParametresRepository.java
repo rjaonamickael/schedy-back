@@ -13,4 +13,5 @@ public interface ParametresRepository extends JpaRepository<Parametres, Long> {
     // Organisation-scoped queries
     Optional<Parametres> findBySiteIdAndOrganisationId(String siteId, String organisationId);
     Optional<Parametres> findBySiteIdIsNullAndOrganisationId(String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }

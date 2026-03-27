@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface FeatureFlagRepository extends JpaRepository<FeatureFlag, String> {
     List<FeatureFlag> findByOrganisationId(String organisationId);
     Optional<FeatureFlag> findByOrganisationIdAndFeatureKey(String organisationId, String featureKey);
+    void deleteByOrganisationId(String organisationId);
 }

@@ -11,4 +11,5 @@ public interface OrganisationRepository extends JpaRepository<Organisation, Stri
     Optional<Organisation> findByDomaine(String domaine);
     Optional<Organisation> findByNom(String nom);
     boolean existsByNom(String nom);
+    long countByStatus(String status);
 }

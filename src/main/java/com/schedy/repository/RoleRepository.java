@@ -20,4 +20,5 @@ public interface RoleRepository extends JpaRepository<Role, String> {
     Optional<Role> findByIdAndOrganisationId(String id, String organisationId);
     List<Role> findByOrganisationIdOrderByImportanceAsc(String organisationId);
     Optional<Role> findByNomAndOrganisationId(String nom, String organisationId);
+    void deleteByOrganisationId(String organisationId);
 }
