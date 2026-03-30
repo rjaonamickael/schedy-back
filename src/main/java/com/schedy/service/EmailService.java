@@ -10,6 +10,11 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -25,6 +30,9 @@ public class EmailService {
 
     @Value("${schedy.invitation.expiry-hours:24}")
     private int expiryHours;
+
+    @Value("${brevo.api-key:}")
+    private String brevoApiKey;
 
     private static final String CID_LOGO_IMG =
         "<img src=\"cid:schedy_logo\" alt=\"Schedy\" width=\"160\" "
@@ -70,8 +78,48 @@ public class EmailService {
     }
 
     private void sendHtmlEmail(String to, String subject, String html) {
+        if (brevoApiKey != null && !brevoApiKey.isBlank()) {
+            sendViaBrevoApi(to, subject, html);
+        } else {
+            sendViaSmtp(to, subject, html);
+        }
+    }
+
+    private void sendViaBrevoApi(String to, String subject, String html) {
         try {
-            log.info("Sending email to {}", to);
+            log.info("Sending email via Brevo API to {}", to);
+            String htmlWithUrl = html.replace("cid:schedy_logo", frontendUrl + "/logo.png");
+
+            var payload = java.util.Map.of(
+                "sender", java.util.Map.of("name", "Schedy", "email", fromAddress),
+                "to", java.util.List.of(java.util.Map.of("email", to)),
+                "subject", subject,
+                "htmlContent", htmlWithUrl
+            );
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
+
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                .header("api-key", brevoApiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                log.info("Email sent via Brevo API to {}", to);
+            } else {
+                log.error("Brevo API error ({}): {}", response.statusCode(), response.body());
+            }
+        } catch (Exception e) {
+            log.error("Failed to send email via Brevo API to {}: {}", to, e.getMessage(), e);
+        }
+    }
+
+    private void sendViaSmtp(String to, String subject, String html) {
+        try {
+            log.info("Sending email via SMTP to {}", to);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromAddress, "Schedy");
@@ -80,10 +128,14 @@ public class EmailService {
             helper.setText(html, true);
             helper.addInline("schedy_logo", new ClassPathResource("email/logo.png"), "image/png");
             mailSender.send(message);
-            log.info("Email sent to {}", to);
+            log.info("Email sent via SMTP to {}", to);
         } catch (Exception e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage(), e);
+            log.error("Failed to send email via SMTP to {}: {}", to, e.getMessage(), e);
         }
+    }
+
+    private String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private String buildPromotionHtml(String name, String link) {
