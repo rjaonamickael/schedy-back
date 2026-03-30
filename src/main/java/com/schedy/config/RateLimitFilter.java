@@ -2,7 +2,6 @@ package com.schedy.config;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +43,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Bucket> validateBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> kioskAdminBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> invitationBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> forgotPasswordBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> resetPasswordBuckets = new ConcurrentHashMap<>();
 
     private final Set<String> trustedProxies;
 
@@ -70,6 +71,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             bucket = kioskAdminBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofMinutes(1)));
         } else if (path.startsWith("/api/v1/pointage-codes/validate")) {
             bucket = validateBuckets.computeIfAbsent(ip, k -> createBucket(10, Duration.ofMinutes(1)));
+        } else if (path.startsWith("/api/v1/auth/forgot-password")) {
+            bucket = forgotPasswordBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofHours(1)));
+        } else if (path.startsWith("/api/v1/auth/reset-password")) {
+            bucket = resetPasswordBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
         } else if (path.startsWith("/api/v1/auth/set-password") || path.startsWith("/api/v1/auth/validate-invitation")) {
             bucket = invitationBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
         }
@@ -85,7 +90,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket createBucket(int capacity, Duration refillDuration) {
-        Bandwidth limit = Bandwidth.classic(capacity, Refill.greedy(capacity, refillDuration));
+        Bandwidth limit = Bandwidth.builder()
+                .capacity(capacity)
+                .refillGreedy(capacity, refillDuration)
+                .build();
         return Bucket.builder().addLimit(limit).build();
     }
 
@@ -101,13 +109,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Scheduled(fixedRate = 300_000) // 5 minutes
     public void evictBuckets() {
         int total = loginBuckets.size() + registerBuckets.size() + validateBuckets.size()
-                + kioskAdminBuckets.size() + invitationBuckets.size();
+                + kioskAdminBuckets.size() + invitationBuckets.size()
+                + forgotPasswordBuckets.size() + resetPasswordBuckets.size();
         if (total > 0) {
             loginBuckets.clear();
             registerBuckets.clear();
             validateBuckets.clear();
             kioskAdminBuckets.clear();
             invitationBuckets.clear();
+            forgotPasswordBuckets.clear();
+            resetPasswordBuckets.clear();
             log.debug("Rate limit buckets evicted ({} entries cleared)", total);
         }
     }

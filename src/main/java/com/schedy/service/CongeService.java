@@ -405,6 +405,22 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
+
+        // Employees can only cancel their own pending requests
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isEmployee = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"));
+        if (isEmployee) {
+            String email = auth.getName();
+            var user = userRepository.findByEmail(email).orElse(null);
+            if (user == null || !demande.getEmployeId().equals(user.getEmployeId())) {
+                throw new BusinessRuleException("Vous ne pouvez annuler que vos propres demandes");
+            }
+            if (demande.getStatut() != StatutDemande.en_attente) {
+                throw new BusinessRuleException("Seules les demandes en attente peuvent etre annulees");
+            }
+        }
+
         if (demande.getStatut() == StatutDemande.en_attente) {
             // Rollback enAttente if deleting a pending request
             banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)

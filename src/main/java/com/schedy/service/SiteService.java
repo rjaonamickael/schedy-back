@@ -4,8 +4,10 @@ import com.schedy.config.TenantContext;
 import com.schedy.dto.SiteDto;
 import com.schedy.entity.PointageCode.UniteRotation;
 import com.schedy.entity.Site;
+import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.SiteRepository;
+import com.schedy.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,6 +27,7 @@ public class SiteService {
     private final SiteRepository siteRepository;
     private final TenantContext tenantContext;
     private final PointageCodeService pointageCodeService;
+    private final SubscriptionRepository subscriptionRepository;
 
     @Transactional(readOnly = true)
     public Page<Site> findAll(Pageable pageable) {
@@ -54,6 +57,15 @@ public class SiteService {
     @Transactional
     public Site create(SiteDto dto) {
         String orgId = tenantContext.requireOrganisationId();
+        long currentCount = siteRepository.countByOrganisationId(orgId);
+        int maxSites = subscriptionRepository.findByOrganisationId(orgId)
+                .map(sub -> sub.getMaxSites())
+                .orElse(1); // FREE tier default
+        if (currentCount >= maxSites) {
+            throw new BusinessRuleException(
+                    "Limite de sites atteinte (" + maxSites
+                    + "). Veuillez mettre \u00e0 niveau votre abonnement pour ajouter de nouveaux sites.");
+        }
         if (siteRepository.existsByNomAndOrganisationId(dto.nom(), orgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Un site avec ce nom existe deja");
         }

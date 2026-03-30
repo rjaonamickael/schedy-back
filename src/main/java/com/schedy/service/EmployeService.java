@@ -17,7 +17,9 @@ import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.PlatformAnnouncementRepository;
 import com.schedy.repository.PointageRepository;
+import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.util.TotpEncryptionUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,6 +56,8 @@ public class EmployeService {
     private final EmailService emailService;
     private final OrganisationRepository organisationRepository;
     private final PlatformAnnouncementRepository announcementRepository;
+    private final SubscriptionRepository subscriptionRepository;
+    private final TotpEncryptionUtil pinEncryptionUtil;
 
     @Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
@@ -110,6 +114,15 @@ public class EmployeService {
     @Transactional
     public Employe create(EmployeDto dto) {
         String orgId = tenantContext.requireOrganisationId();
+        long currentCount = employeRepository.countByOrganisationId(orgId);
+        int maxEmployees = subscriptionRepository.findByOrganisationId(orgId)
+                .map(sub -> sub.getMaxEmployees())
+                .orElse(15); // FREE tier default
+        if (currentCount >= maxEmployees) {
+            throw new BusinessRuleException(
+                    "Limite d'employ\u00e9s atteinte (" + maxEmployees
+                    + "). Veuillez mettre \u00e0 niveau votre abonnement pour ajouter de nouveaux employ\u00e9s.");
+        }
         if (dto.email() != null && !dto.email().isBlank()
                 && employeRepository.existsByEmailAndOrganisationId(dto.email(), orgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -124,7 +137,8 @@ public class EmployeService {
                 .dateEmbauche(dto.dateEmbauche())
                 .pin(dto.pin() != null ? passwordEncoder.encode(dto.pin()) : null)
                 .pinHash(dto.pin() != null ? sha256(dto.pin()) : null)
-                .pinClair(dto.pin())
+                .pinClair(dto.pin() != null ? pinEncryptionUtil.encrypt(dto.pin()) : null)
+                .pinClairEncrypted(dto.pin() != null)
                 .organisationId(orgId)
                 .disponibilites(dto.disponibilites() != null ? dto.disponibilites() : Collections.emptyList())
                 .siteIds(dto.siteIds() != null ? dto.siteIds() : Collections.emptyList())
@@ -185,7 +199,8 @@ public class EmployeService {
         if (dto.pin() != null && !dto.pin().isBlank()) {
             employe.setPin(passwordEncoder.encode(dto.pin()));
             employe.setPinHash(sha256(dto.pin()));
-            employe.setPinClair(dto.pin());
+            employe.setPinClair(pinEncryptionUtil.encrypt(dto.pin()));
+            employe.setPinClairEncrypted(true);
         }
         if (dto.disponibilites() != null) {
             employe.getDisponibilites().clear();
@@ -206,6 +221,43 @@ public class EmployeService {
         return employeRepository.findByIdAndOrganisationId(employeId, orgId)
                 .map(emp -> emp.getPin() != null && passwordEncoder.matches(rawPin, emp.getPin()))
                 .orElse(false);
+    }
+
+    /**
+     * Returns the decrypted plain-text PIN for an employee, for display in their dashboard.
+     *
+     * <p>Stored PINs are AES-256-GCM encrypted from application version V10 onward.
+     * The {@code pinClairEncrypted} flag (added in Flyway V10) reliably distinguishes:
+     * <ul>
+     *   <li>{@code true}  — post-migration row: decrypt with AES-256-GCM.</li>
+     *   <li>{@code false} — pre-migration row: value is plain text; returned as-is and a
+     *       warning is logged. The value will be re-encrypted on the next PIN update.</li>
+     * </ul>
+     *
+     * @param employeId the employee id (must belong to the current org)
+     * @return the plain-text PIN, or an empty string if none is set
+     */
+    @Transactional(readOnly = true)
+    public String getDecryptedPin(String employeId) {
+        Employe employe = findById(employeId);
+        String stored = employe.getPinClair();
+        if (stored == null || stored.isBlank()) {
+            return "";
+        }
+        if (!employe.isPinClairEncrypted()) {
+            // Pre-V10 plaintext row — return as-is and let the caller know
+            log.warn("Returning plaintext PIN for pre-migration employe {} — "
+                    + "PIN will be re-encrypted on next update.", employeId);
+            return stored;
+        }
+        try {
+            return pinEncryptionUtil.decrypt(stored);
+        } catch (Exception e) {
+            // Should not happen for rows where pinClairEncrypted=true, but guard defensively
+            log.error("AES-256-GCM decryption failed for employe {} despite encrypted flag being true. "
+                    + "Key rotation or data corruption suspected. Error: {}", employeId, e.getMessage());
+            throw new RuntimeException("PIN decryption failed — contact support.", e);
+        }
     }
 
     /**

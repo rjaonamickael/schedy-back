@@ -49,7 +49,13 @@ public class Employe {
     @JsonIgnore
     private String pinHash;     // SHA-256 hash for O(1) lookup
 
-    private String pinClair;    // Raw PIN — displayed to the employee in their dashboard
+    @JsonIgnore
+    private String pinClair;    // AES-256-GCM encrypted PIN — decrypted on demand via /employes/{id}/pin
+
+    @JsonIgnore
+    @Column(name = "pin_clair_encrypted", nullable = false)
+    @Builder.Default
+    private boolean pinClairEncrypted = false; // TRUE = post-V10 encrypted blob; FALSE = pre-migration plaintext
 
     private String organisationId;
 

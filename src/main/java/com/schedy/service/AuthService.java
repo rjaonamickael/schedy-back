@@ -3,9 +3,11 @@ package com.schedy.service;
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.ChangePasswordRequest;
+import com.schedy.dto.request.ForgotPasswordRequest;
 import com.schedy.dto.request.InviteAdminRequest;
 import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
+import com.schedy.dto.request.ResetPasswordRequest;
 import com.schedy.dto.request.SetPasswordRequest;
 import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AdminUserResponse;
@@ -30,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -264,8 +267,9 @@ public class AuthService {
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setPasswordSet(true);
+        user.setRefreshToken(null);
         userRepository.save(user);
-        log.info("Password changed for user: {}", email);
+        log.info("Password changed for user: {} — refresh token invalidated", email);
     }
 
     /**
@@ -362,6 +366,66 @@ public class AuthService {
         user.setPasswordSet(true);
         userRepository.save(user);
         log.info("Password set via invitation token for user: {}", user.getEmail());
+    }
+
+    /**
+     * Initiates the forgot-password flow for the given email address.
+     * Generates a secure token, stores its SHA-256 hash on the user, and sends a reset
+     * link by email containing the raw (unhashed) token.
+     * <p>
+     * If no account exists for the supplied email the method returns silently to prevent
+     * user enumeration — callers must always return the same 200 response regardless.
+     */
+    @Transactional
+    public void initiateForgotPassword(String email) {
+        String normalizedEmail = email.toLowerCase().trim();
+        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
+        if (user == null) {
+            // Anti-enumeration: log and return silently — never reveal whether an account exists.
+            log.info("Password reset requested for unknown email (silently ignored): {}", normalizedEmail);
+            return;
+        }
+
+        String rawToken = generateSecureToken();
+        user.setPasswordResetToken(CryptoUtil.sha256(rawToken));
+        user.setPasswordResetTokenExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
+        userRepository.save(user);
+
+        try {
+            boolean isFrench = resolveIsFrench(user.getOrganisationId());
+            emailService.sendPasswordResetEmail(user.getEmail(), user.getNom(), rawToken, isFrench);
+        } catch (Exception e) {
+            log.error("Failed to send password reset email to {}: {}", user.getEmail(), e.getMessage());
+        }
+        log.info("Password reset token issued for user: {}", user.getEmail());
+    }
+
+    /**
+     * Validates the password-reset token and sets the new password.
+     * The token is single-use and cleared on success together with the stored refresh token
+     * so all existing sessions are invalidated after a password reset.
+     *
+     * @throws ResourceNotFoundException when no user matches the hashed token
+     * @throws BusinessRuleException     when the token has expired
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String hashedToken = CryptoUtil.sha256(request.token());
+        User user = userRepository.findByPasswordResetToken(hashedToken)
+                .orElseThrow(() -> new ResourceNotFoundException("PasswordResetToken", request.token()));
+
+        if (user.getPasswordResetTokenExpiresAt() == null
+                || Instant.now().isAfter(user.getPasswordResetTokenExpiresAt())) {
+            throw new BusinessRuleException("Le lien de r\u00e9initialisation a expir\u00e9. Veuillez en demander un nouveau. / The reset link has expired. Please request a new one.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        user.setPasswordResetToken(null);
+        user.setPasswordResetTokenExpiresAt(null);
+        user.setPasswordSet(true);
+        user.setRefreshToken(null); // Invalidate all active sessions
+        userRepository.save(user);
+        log.info("Password reset successfully for user: {} — all sessions invalidated", user.getEmail());
     }
 
     /**

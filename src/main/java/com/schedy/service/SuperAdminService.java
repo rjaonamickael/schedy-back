@@ -93,11 +93,77 @@ public class SuperAdminService {
     // ORGANISATIONS
     // =========================================================================
 
+    /**
+     * Returns a summary for every organisation using exactly 5 queries regardless of
+     * how many organisations exist (1 per table: organisation, employe, app_user,
+     * subscription, promo_code) — down from 4N+1 in the previous loop-based approach.
+     */
     @Transactional(readOnly = true)
     public List<OrgSummaryResponse> findAllOrganisations() {
-        return organisationRepository.findAll().stream()
-                .map(this::toOrgSummary)
-                .collect(Collectors.toList());
+        List<Organisation> orgs = organisationRepository.findAll();
+        if (orgs.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> orgIds = orgs.stream().map(Organisation::getId).toList();
+
+        // Query 2 — employee counts grouped by org
+        Map<String, Long> employeeCounts = employeRepository
+                .countGroupedByOrganisationId(orgIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long)   row[1]
+                ));
+
+        // Query 3 — user counts grouped by org
+        Map<String, Long> userCounts = userRepository
+                .countGroupedByOrganisationId(orgIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long)   row[1]
+                ));
+
+        // Query 4 — all subscriptions for these orgs; keep first if somehow duplicated
+        Map<String, Subscription> subscriptions = subscriptionRepository
+                .findByOrganisationIdIn(orgIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        Subscription::getOrganisationId,
+                        s -> s,
+                        (existing, duplicate) -> existing
+                ));
+
+        // Query 5 — batch-load only the promo codes that are actually referenced
+        Set<String> promoIds = subscriptions.values().stream()
+                .map(Subscription::getPromoCodeId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<String, String> promoCodeById = promoIds.isEmpty()
+                ? Map.of()
+                : promoCodeRepository.findByIdIn(promoIds)
+                        .stream()
+                        .collect(Collectors.toMap(PromoCode::getId, PromoCode::getCode));
+
+        // Assemble summaries with no further DB access
+        return orgs.stream().map(org -> {
+            String orgId = org.getId();
+            long empCount = employeeCounts.getOrDefault(orgId, 0L);
+            long usrCount = userCounts.getOrDefault(orgId, 0L);
+            Subscription sub = subscriptions.get(orgId);
+
+            String planTier  = sub != null ? sub.getPlanTier().name() : "NONE";
+            String promoCode = (sub != null && sub.getPromoCodeId() != null)
+                    ? promoCodeById.get(sub.getPromoCodeId())
+                    : null;
+
+            return new OrgSummaryResponse(
+                    org.getId(), org.getNom(), org.getStatus(),
+                    planTier, empCount, usrCount, org.getCreatedAt(), promoCode
+            );
+        }).toList();
     }
 
     @Transactional(readOnly = true)
@@ -463,19 +529,22 @@ public class SuperAdminService {
                         "Organisation introuvable : " + id));
     }
 
+    /**
+     * Single-org summary helper — issues up to 4 individual queries.
+     * Acceptable for single-entity operations (findOrganisation, createOrganisation,
+     * updateOrgStatus). Do NOT call inside a loop; use findAllOrganisations() instead.
+     */
     private OrgSummaryResponse toOrgSummary(Organisation org) {
         long employeeCount = employeRepository.countByOrganisationId(org.getId());
         long userCount = userRepository.countByOrganisationId(org.getId());
 
-        String promoCode = subscriptionRepository.findByOrganisationId(org.getId())
-                .flatMap(sub -> sub.getPromoCodeId() != null
-                        ? promoCodeRepository.findById(sub.getPromoCodeId()).map(PromoCode::getCode)
-                        : Optional.empty())
-                .orElse(null);
+        var sub = subscriptionRepository.findByOrganisationId(org.getId()).orElse(null);
 
-        String planTier = subscriptionRepository.findByOrganisationId(org.getId())
-                .map(sub -> sub.getPlanTier().name())
-                .orElse("NONE");
+        String promoCode = (sub != null && sub.getPromoCodeId() != null)
+                ? promoCodeRepository.findById(sub.getPromoCodeId()).map(PromoCode::getCode).orElse(null)
+                : null;
+
+        String planTier = sub != null ? sub.getPlanTier().name() : "NONE";
 
         return new OrgSummaryResponse(
                 org.getId(),

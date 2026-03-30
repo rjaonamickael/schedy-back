@@ -165,7 +165,7 @@ public class CongeController {
     }
 
     @DeleteMapping("/demandes/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<Void> deleteDemande(@PathVariable String id) {
         congeService.deleteDemande(id);
         return ResponseEntity.noContent().build();

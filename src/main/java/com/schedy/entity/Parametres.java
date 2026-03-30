@@ -57,4 +57,8 @@ public class Parametres {
     @BatchSize(size = 50)
     @Builder.Default
     private List<String> reglesAffectation = new ArrayList<>();
+
+    @Builder.Default
+    @Column(name = "seuil_absence_vs_conge_heures", columnDefinition = "integer default 48")
+    private Integer seuilAbsenceVsCongeHeures = 48;
 }

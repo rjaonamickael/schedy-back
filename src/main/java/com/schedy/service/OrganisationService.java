@@ -5,7 +5,10 @@ import com.schedy.dto.OrganisationDto;
 import com.schedy.entity.Organisation;
 import com.schedy.repository.OrganisationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,6 +21,7 @@ public class OrganisationService {
 
     private final OrganisationRepository organisationRepository;
     private final TenantContext tenantContext;
+    private final OrganisationCacheStore cacheStore;
 
     /**
      * Returns only the caller's own organisation (B-M17).
@@ -26,7 +30,8 @@ public class OrganisationService {
     @Transactional(readOnly = true)
     public List<Organisation> findAll() {
         String orgId = tenantContext.requireOrganisationId();
-        return organisationRepository.findById(orgId).map(List::of).orElse(List.of());
+        Organisation org = cacheStore.findByIdCached(orgId, organisationRepository);
+        return List.of(org);
     }
 
     @Transactional(readOnly = true)
@@ -36,8 +41,7 @@ public class OrganisationService {
         if (!orgId.equals(id)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acces refuse");
         }
-        return organisationRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organisation non trouvee"));
+        return cacheStore.findByIdCached(id, organisationRepository);
     }
 
     @Transactional
@@ -57,13 +61,16 @@ public class OrganisationService {
 
     @Transactional
     public Organisation update(String id, OrganisationDto dto) {
-        Organisation organisation = findById(id); // findById already enforces tenant scope
+        // findById enforces tenant scope; goes through the service method (tenant check)
+        Organisation organisation = findById(id);
         organisation.setNom(dto.nom());
         organisation.setDomaine(dto.domaine());
         organisation.setAdresse(dto.adresse());
         organisation.setTelephone(dto.telephone());
         organisation.setPays(dto.pays());
-        return organisationRepository.save(organisation);
+        Organisation saved = organisationRepository.save(organisation);
+        cacheStore.evict(id);
+        return saved;
     }
 
     @Transactional
@@ -71,5 +78,29 @@ public class OrganisationService {
         // B-M17: Tenant scope — findById enforces the caller owns this org
         findById(id);
         organisationRepository.deleteById(id);
+        cacheStore.evict(id);
+    }
+
+    /**
+     * Separate Spring-managed bean so that @Cacheable/@CacheEvict annotations are
+     * intercepted by the AOP proxy. The id is passed explicitly so the cache key
+     * is never coupled to the request-scoped TenantContext.
+     */
+    @Component
+    @RequiredArgsConstructor
+    public static class OrganisationCacheStore {
+
+        @Cacheable(value = "organisations", key = "#id")
+        @Transactional(readOnly = true)
+        public Organisation findByIdCached(String id, OrganisationRepository repo) {
+            return repo.findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Organisation non trouvee"));
+        }
+
+        @CacheEvict(value = "organisations", key = "#id")
+        public void evict(String id) {
+            // eviction only — no body needed
+        }
     }
 }

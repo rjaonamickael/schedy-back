@@ -2,8 +2,10 @@ package com.schedy.controller;
 
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
+import com.schedy.dto.request.ForgotPasswordRequest;
 import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
+import com.schedy.dto.request.ResetPasswordRequest;
 import com.schedy.dto.request.SetPasswordRequest;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.service.AuthService;
@@ -69,6 +71,28 @@ public class AuthController {
     public ResponseEntity<Void> setPassword(@Valid @RequestBody SetPasswordRequest request) {
         authService.setPasswordFromInvitation(request);
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * POST /api/v1/auth/forgot-password
+     * Initiates the password-reset flow. Always returns 200 regardless of whether the
+     * email is registered in order to prevent user enumeration.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.initiateForgotPassword(request.email());
+        return ResponseEntity.ok(Map.of("message", "If an account exists, an email has been sent."));
+    }
+
+    /**
+     * POST /api/v1/auth/reset-password
+     * Validates the reset token and sets the new password.
+     * Returns 400 when the token is invalid or expired.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Password has been reset successfully."));
     }
 
     // ─────────────────────────────────────────────────────────────────

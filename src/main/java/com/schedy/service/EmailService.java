@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -29,6 +30,7 @@ public class EmailService {
         "<img src=\"cid:schedy_logo\" alt=\"Schedy\" width=\"160\" "
         + "style=\"display:block;border:0;height:auto;max-width:160px;\"/>";
 
+    @Async
     public void sendInvitationEmail(String recipientEmail, String recipientName, String rawToken, boolean isFrench) {
         String link = frontendUrl + "/set-password?token=" + rawToken;
         String subject = "Activation de votre compte utilisateur Schedy / Schedy user account activation";
@@ -36,6 +38,7 @@ public class EmailService {
         sendHtmlEmail(recipientEmail, subject, html);
     }
 
+    @Async
     public void send2faCodeEmail(String recipientEmail, String recipientName, String code, int expirySeconds) {
         String subject = "Code de v\u00e9rification Schedy / Schedy verification code";
         String minutes = String.valueOf(expirySeconds / 60);
@@ -43,6 +46,7 @@ public class EmailService {
         sendHtmlEmail(recipientEmail, subject, html);
     }
 
+    @Async
     public void sendAdminInvitationEmail(String recipientEmail, String orgName, String rawToken, boolean isFrench) {
         String link = frontendUrl + "/set-password?token=" + rawToken;
         String subject = "Activation de votre acc\u00e8s administrateur - " + orgName + " / Administrator account activation - " + orgName;
@@ -50,6 +54,14 @@ public class EmailService {
         sendHtmlEmail(recipientEmail, subject, html);
     }
 
+    @Async
+    public void sendPasswordResetEmail(String recipientEmail, String recipientName, String rawToken, boolean isFrench) {
+        String subject = "R\u00e9initialisation de votre mot de passe Schedy / Schedy password reset";
+        String html = buildPasswordResetHtml(escapeHtml(recipientName != null ? recipientName : recipientEmail), rawToken);
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    @Async
     public void sendPromotionEmail(String recipientEmail, String recipientName, boolean isFrench) {
         String link = frontendUrl;
         String subject = "Mise \u00e0 jour de vos acc\u00e8s Schedy - Nouveau r\u00f4le : Manager / Schedy account update - Manager role assigned";
@@ -70,8 +82,7 @@ public class EmailService {
             mailSender.send(message);
             log.info("Email sent to {}", to);
         } catch (Exception e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage());
-            throw new RuntimeException("Echec de l'envoi de l'email", e);
+            log.error("Failed to send email to {}: {}", to, e.getMessage(), e);
         }
     }
 
@@ -358,6 +369,81 @@ public class EmailService {
             + "</body></html>";
     }
 
+    private String buildPasswordResetHtml(String name, String rawToken) {
+        String linkFr = frontendUrl + "/set-password?resetToken=" + rawToken + "&lang=fr";
+        String linkEn = frontendUrl + "/set-password?resetToken=" + rawToken + "&lang=en";
+        String year = String.valueOf(java.time.Year.now().getValue());
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+
+            // Hidden preheader
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + name + ", r\u00e9initialisez votre mot de passe Schedy. / Reset your Schedy password."
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            // FR section
+            + buildSection(name, linkFr, "1",
+                "R\u00e9initialisation de votre mot de passe",
+                "Bonjour",
+                "Nous avons re\u00e7u une demande de r\u00e9initialisation du mot de passe associ\u00e9 \u00e0 votre compte <strong style=\"color:#047857;\">Schedy</strong>.",
+                "",
+                new String[]{},
+                "Cliquez sur le bouton ci-dessous pour d\u00e9finir un nouveau mot de passe. Ce lien est \u00e0 usage unique.",
+                "R\u00e9initialiser mon mot de passe",
+                "Ce lien expire dans <strong>1 heure</strong>. Pass\u00e9 ce d\u00e9lai, vous devrez refaire une demande.",
+                "Si vous n\u2019\u00eates pas \u00e0 l\u2019origine de cette demande, ignorez cet email. Votre mot de passe ne sera pas modifi\u00e9.")
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            // EN section
+            + buildSection(name, linkEn, "1",
+                "Password reset",
+                "Dear",
+                "We received a request to reset the password for your <strong style=\"color:#047857;\">Schedy</strong> account.",
+                "",
+                new String[]{},
+                "Click the button below to set a new password. This link is single-use.",
+                "Reset my password",
+                "This link expires in <strong>1 hour</strong>. After that, you will need to request a new one.",
+                "If you did not request a password reset, please ignore this email. Your password will not be changed.")
+
+            // Footer
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "<p style=\"margin:12px 0 0;font-size:10px;color:#D1D5DB;\">"
+            + "FR: <a href=\"" + linkFr + "\" style=\"color:#9CA3AF;text-decoration:underline;\">lien direct</a>"
+            + " &nbsp;|&nbsp; EN: <a href=\"" + linkEn + "\" style=\"color:#9CA3AF;text-decoration:underline;\">direct link</a></p>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
     private String build2faCodeHtml(String name, String code, String minutes) {
         String year = String.valueOf(java.time.Year.now().getValue());
         // Format code with spaces: "123456" → "1 2 3 4 5 6"
@@ -447,6 +533,105 @@ public class EmailService {
             + "<td style=\"padding:4px 0;font-size:14px;color:#374151;line-height:1.55;\">"
             + escapeHtml(text) + "</td>\n"
             + "</tr></table>\n";
+    }
+
+    // ── Plan B : Absences imprévues ─────────────────────────────────
+
+    public void sendAbsenceSignaleeEmail(String recipientEmail, String recipientName,
+                                          com.schedy.entity.AbsenceImprevue absence, String employeNom) {
+        String subject = "Absence impr\u00e9vue signal\u00e9e \u2014 " + escapeHtml(employeNom)
+                + " / Unplanned absence reported";
+        String appLink = frontendUrl + "/planning";
+        String html = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence impr\u00e9vue signal\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 16px;\">"
+            + "<strong>" + escapeHtml(employeNom) + "</strong> a signal\u00e9 une absence impr\u00e9vue pour le "
+            + "<strong style=\"color:#047857;\">" + absence.getDateAbsence() + "</strong>.</p>"
+            + buildFeatureRow("#10B981", "Motif : " + absence.getMotif())
+            + (absence.getMessageEmploye() != null && !absence.getMessageEmploye().isBlank()
+                ? buildFeatureRow("#6B7280", "Message : " + absence.getMessageEmploye()) : "")
+            + buildFeatureRow("#F59E0B", absence.getCreneauIds().size() + " cr\u00e9neau(x) impact\u00e9(s)")
+            + "<p style=\"font-size:15px;color:#4B5563;margin:16px 0 0;\">Veuillez valider ou refuser cette absence :</p>"
+            + "<table role=\"presentation\" style=\"margin:24px 0;\"><tr><td>"
+            + "<a href=\"" + appLink + "\" style=\"display:inline-block;background:#047857;color:#fff;"
+            + "font-size:15px;font-weight:600;text-decoration:none;padding:13px 36px;border-radius:6px;\">"
+            + "Voir dans l'application</a></td></tr></table>"
+            + "</td></tr>"
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background:#F9FAFB;\">"
+            + "<p style=\"margin:0;font-size:13px;font-weight:700;\">Schedy</p>"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
+            + "</td></tr></table></body></html>";
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    public void sendAbsenceValideeEmail(String recipientEmail, String recipientName, String date) {
+        String subject = "Votre absence du " + date + " a \u00e9t\u00e9 accept\u00e9e / Absence accepted";
+        String html = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence valid\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 16px;\">"
+            + "Votre absence du <strong>" + date + "</strong> a \u00e9t\u00e9 valid\u00e9e par votre manager. "
+            + "Un rempla\u00e7ant sera assign\u00e9 si n\u00e9cessaire.</p>"
+            + "</td></tr>"
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background:#F9FAFB;\">"
+            + "<p style=\"margin:0;font-size:13px;font-weight:700;\">Schedy</p>"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
+            + "</td></tr></table></body></html>";
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    public void sendAbsenceRefuseeEmail(String recipientEmail, String recipientName,
+                                         String date, String noteRefus) {
+        String subject = "Votre absence du " + date + " a \u00e9t\u00e9 refus\u00e9e / Absence declined";
+        String html = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#DC2626;margin:0 0 16px;\">Absence refus\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 8px;\">"
+            + "Votre absence du <strong>" + date + "</strong> a \u00e9t\u00e9 refus\u00e9e. "
+            + "Vous \u00eates attendu(e) \u00e0 votre poste.</p>"
+            + (noteRefus != null && !noteRefus.isBlank()
+                ? "<p style=\"font-size:14px;color:#6B7280;margin:12px 0 0;\"><strong>Motif :</strong> "
+                  + escapeHtml(noteRefus) + "</p>" : "")
+            + "</td></tr>"
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background:#F9FAFB;\">"
+            + "<p style=\"margin:0;font-size:13px;font-weight:700;\">Schedy</p>"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
+            + "</td></tr></table></body></html>";
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    public void sendAbsenceAnnuleeEmail(String recipientEmail, String recipientName,
+                                         String employeNom, String date) {
+        String subject = "Absence annul\u00e9e \u2014 " + date + " / Absence cancelled";
+        String html = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence annul\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;\">"
+            + "<strong>" + escapeHtml(employeNom) + "</strong> a annul\u00e9 son alerte d'absence pour le "
+            + "<strong style=\"color:#047857;\">" + date + "</strong>. Aucune action n'est requise.</p>"
+            + "</td></tr>"
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background:#F9FAFB;\">"
+            + "<p style=\"margin:0;font-size:13px;font-weight:700;\">Schedy</p>"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
+            + "</td></tr></table></body></html>";
+        sendHtmlEmail(recipientEmail, subject, html);
     }
 
     private String escapeHtml(String input) {

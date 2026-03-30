@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,10 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
     List<Employe> findByPinHash(String pinHash);
 
     long countByOrganisationId(String organisationId);
+
+    @Query("SELECT e.organisationId, COUNT(e) FROM Employe e WHERE e.organisationId IN :orgIds GROUP BY e.organisationId")
+    List<Object[]> countGroupedByOrganisationId(@Param("orgIds") Collection<String> orgIds);
+
     boolean existsByEmailAndOrganisationId(String email, String organisationId);
     Optional<Employe> findByEmailAndOrganisationId(String email, String organisationId);
     void deleteByOrganisationId(String organisationId);

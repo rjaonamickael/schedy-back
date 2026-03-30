@@ -140,9 +140,10 @@ public class TotpService {
                 "Code TOTP invalide. Vérifiez l'heure de votre appareil et réessayez.");
         }
 
-        // Enable 2FA
+        // Enable 2FA and invalidate existing refresh token (force re-auth with 2FA)
         user.setTotpEnabled(true);
         user.setTotpLastUsedOtp(code); // mark first code as used (replay prevention)
+        user.setRefreshToken(null);
         userRepository.save(user);
 
         // Generate and store recovery codes
@@ -339,6 +340,7 @@ public class TotpService {
         user.setTotpEnabled(false);
         user.setTotpSecretEncrypted(null);
         user.setTotpLastUsedOtp(null);
+        user.setRefreshToken(null); // force re-auth after 2FA state change
         userRepository.save(user);
     }
 

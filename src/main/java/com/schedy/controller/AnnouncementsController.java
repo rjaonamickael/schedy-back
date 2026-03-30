@@ -1,7 +1,7 @@
 package com.schedy.controller;
 
 import com.schedy.config.TenantContext;
-import com.schedy.entity.PlatformAnnouncement;
+import com.schedy.dto.response.AnnouncementResponse;
 import com.schedy.repository.PlatformAnnouncementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,16 +24,22 @@ public class AnnouncementsController {
     private final TenantContext tenantContext;
 
     @GetMapping("/active")
-    public ResponseEntity<List<PlatformAnnouncement>> getActive() {
+    public ResponseEntity<List<AnnouncementResponse>> getActive() {
         String orgId = tenantContext.getOrganisationId();
         if (orgId != null) {
             return ResponseEntity.ok(
                 announcementRepository.findActiveNonExpiredForOrg(OffsetDateTime.now(ZoneOffset.UTC), orgId)
+                        .stream()
+                        .map(AnnouncementResponse::from)
+                        .toList()
             );
         }
         // SuperAdmin or unauthenticated-org context: return all global announcements
         return ResponseEntity.ok(
             announcementRepository.findActiveNonExpired(OffsetDateTime.now(ZoneOffset.UTC))
+                    .stream()
+                    .map(AnnouncementResponse::from)
+                    .toList()
         );
     }
 }

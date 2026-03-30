@@ -121,9 +121,9 @@ public class UserController {
     }
 
     @PostMapping("/2fa/setup/confirm")
-    public ResponseEntity<List<String>> confirm2faSetup(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Map<String, List<String>>> confirm2faSetup(@RequestBody Map<String, String> body) {
         String code = body.get("code");
-        return ResponseEntity.ok(totpService.confirmSetup(code));
+        return ResponseEntity.ok(Map.of("recoveryCodes", totpService.confirmSetup(code)));
     }
 
     @DeleteMapping("/2fa")

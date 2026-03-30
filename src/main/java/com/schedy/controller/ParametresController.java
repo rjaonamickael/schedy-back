@@ -17,6 +17,7 @@ public class ParametresController {
     private final ParametresService parametresService;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'EMPLOYEE')")
     public ResponseEntity<ParametresResponse> get(
             @RequestParam(value = "siteId", required = false) String siteId) {
         if (siteId != null) {

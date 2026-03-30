@@ -73,6 +73,14 @@ public class User {
     @Column(name = "email_2fa_code_expires_at")
     private Instant email2faCodeExpiresAt;
 
+    // ── Password reset ──
+
+    @Column(name = "password_reset_token", length = 64)
+    private String passwordResetToken;
+
+    @Column(name = "password_reset_token_expires_at")
+    private Instant passwordResetTokenExpiresAt;
+
     public enum UserRole {
         SUPERADMIN, ADMIN, MANAGER, EMPLOYEE
     }

@@ -63,8 +63,15 @@ public class EmployeController {
     }
 
     /**
-     * Returns the raw PIN for an employee via POST (avoids PIN in URL/logs).
-     * Accessible to ADMIN/MANAGER (any employee) or to the employee themselves.
+     * Returns the decrypted PIN for an employee via POST (avoids PIN in URL/logs).
+     * The PIN is stored AES-256-GCM encrypted in the database and decrypted here
+     * only for authorised callers.
+     *
+     * Access rules:
+     * <ul>
+     *   <li>ADMIN or MANAGER: may retrieve the PIN for any employee in their org.</li>
+     *   <li>EMPLOYEE: may only retrieve their own PIN.</li>
+     * </ul>
      */
     @PostMapping("/{id}/pin")
     public ResponseEntity<java.util.Map<String, String>> getPin(
@@ -79,9 +86,8 @@ public class EmployeController {
                 return ResponseEntity.status(403).build();
             }
         }
-        var employe = employeService.findById(id);
-        String pin = employe.getPinClair();
-        return ResponseEntity.ok(java.util.Map.of("pin", pin != null ? pin : ""));
+        String pin = employeService.getDecryptedPin(id);
+        return ResponseEntity.ok(java.util.Map.of("pin", pin));
     }
 
     @GetMapping("/role/{role}")
