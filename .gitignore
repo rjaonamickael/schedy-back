@@ -43,3 +43,5 @@ src/main/resources/application.yml
 # Docker
 docker-compose.override.yml
 .env.example
+src/main/resources/db/migration/V11__add_delai_signalement_absence.sql
+.env.example
