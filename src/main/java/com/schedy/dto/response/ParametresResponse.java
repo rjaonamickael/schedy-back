@@ -16,7 +16,8 @@ public record ParametresResponse(
         String taillePolice,
         String planningVue,
         double planningGranularite,
-        List<String> reglesAffectation
+        List<String> reglesAffectation,
+        Integer delaiSignalementAbsenceMinutes
 ) {
     public static ParametresResponse from(Parametres p) {
         return new ParametresResponse(
@@ -31,7 +32,8 @@ public record ParametresResponse(
                 p.getTaillePolice(),
                 p.getPlanningVue(),
                 p.getPlanningGranularite(),
-                p.getReglesAffectation()
+                p.getReglesAffectation(),
+                p.getDelaiSignalementAbsenceMinutes()
         );
     }
 }

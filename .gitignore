@@ -42,3 +42,4 @@ src/main/resources/application.yml
 
 # Docker
 docker-compose.override.yml
+.env.example

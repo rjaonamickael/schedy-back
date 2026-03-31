@@ -19,5 +19,6 @@ public record ParametresDto(
     @Size(max = 50) String taillePolice,
     @Size(max = 50) String planningVue,
     @DecimalMin("0.25") @DecimalMax("4") double planningGranularite,
-    List<String> reglesAffectation
+    List<String> reglesAffectation,
+    @Min(0) @Max(1440) Integer delaiSignalementAbsenceMinutes
 ) {}

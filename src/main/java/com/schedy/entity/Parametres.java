@@ -61,4 +61,8 @@ public class Parametres {
     @Builder.Default
     @Column(name = "seuil_absence_vs_conge_heures", columnDefinition = "integer default 48")
     private Integer seuilAbsenceVsCongeHeures = 48;
+
+    @Builder.Default
+    @Column(name = "delai_signalement_absence_minutes", columnDefinition = "integer default 60")
+    private Integer delaiSignalementAbsenceMinutes = 60;
 }

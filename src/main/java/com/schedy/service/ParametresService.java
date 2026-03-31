@@ -85,6 +85,9 @@ public class ParametresService {
             parametres.getReglesAffectation().clear();
             parametres.getReglesAffectation().addAll(dto.reglesAffectation());
         }
+        if (dto.delaiSignalementAbsenceMinutes() != null) {
+            parametres.setDelaiSignalementAbsenceMinutes(dto.delaiSignalementAbsenceMinutes());
+        }
     }
 
     /**
