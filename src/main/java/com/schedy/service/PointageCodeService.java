@@ -371,6 +371,7 @@ public class PointageCodeService {
         return new KioskPointageCodeResponse(
                 pc.getSiteId(),
                 pc.getCode(),
+                pc.getPin(),
                 pc.getRotationValeur(),
                 pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),

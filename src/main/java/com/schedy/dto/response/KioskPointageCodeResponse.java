@@ -1,13 +1,14 @@
 package com.schedy.dto.response;
 
 /**
- * Public kiosk DTO. PIN is intentionally excluded — the PIN belongs to the
- * authenticated GET /site/{siteId} endpoint (PointageCodeDto) so it is never
- * exposed on the unauthenticated kiosk endpoint.
+ * Public kiosk DTO. PIN is included because the kiosk display is the
+ * authorised surface for showing the PIN to employees clocking in.
+ * The internal {@code id} and {@code pinHash} fields are intentionally excluded.
  */
 public record KioskPointageCodeResponse(
     String siteId,
     String code,
+    String pin,
     int rotationValeur,
     String rotationUnite,
     String validFrom,
