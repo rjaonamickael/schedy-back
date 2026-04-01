@@ -161,7 +161,7 @@ public class SuperAdminService {
 
             return new OrgSummaryResponse(
                     org.getId(), org.getNom(), org.getStatus(),
-                    planTier, empCount, usrCount, org.getCreatedAt(), promoCode
+                    planTier, org.getPays(), empCount, usrCount, org.getCreatedAt(), promoCode
             );
         }).toList();
     }
@@ -265,6 +265,15 @@ public class SuperAdminService {
         org.setStatus(status.toUpperCase());
         organisationRepository.save(org);
         log.info("SuperAdmin: organisation '{}' status updated to '{}'", org.getNom(), status);
+        return toOrgSummary(org);
+    }
+
+    @Transactional
+    public OrgSummaryResponse updateOrgPays(String id, String pays) {
+        Organisation org = requireOrg(id);
+        org.setPays(pays);
+        organisationRepository.save(org);
+        log.info("SuperAdmin: organisation '{}' pays updated to '{}'", org.getNom(), pays);
         return toOrgSummary(org);
     }
 
@@ -551,6 +560,7 @@ public class SuperAdminService {
                 org.getNom(),
                 org.getStatus(),
                 planTier,
+                org.getPays(),
                 employeeCount,
                 userCount,
                 org.getCreatedAt(),

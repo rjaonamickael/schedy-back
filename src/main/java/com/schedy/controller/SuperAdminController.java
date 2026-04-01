@@ -108,6 +108,13 @@ public class SuperAdminController {
         return ResponseEntity.ok(superAdminService.updateOrgStatus(id, request.status()));
     }
 
+    @PutMapping("/organisations/{id}/pays")
+    public ResponseEntity<OrgSummaryResponse> updateOrgPays(
+            @PathVariable String id,
+            @RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(superAdminService.updateOrgPays(id, body.get("pays")));
+    }
+
     // =========================================================================
     // SUBSCRIPTIONS
     // =========================================================================

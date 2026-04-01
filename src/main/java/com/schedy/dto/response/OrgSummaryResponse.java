@@ -7,6 +7,7 @@ public record OrgSummaryResponse(
     String nom,
     String status,
     String planTier,
+    String pays,
     long employeeCount,
     long userCount,
     OffsetDateTime createdAt,
