@@ -519,7 +519,7 @@ public class SuperAdminService {
         log.warn("IMPERSONATION: {} impersonated org '{}' ({})", superadminEmail, org.getNom(), orgId);
 
         // 30 minutes expiry in seconds
-        return new ImpersonateResponse(token, org.getNom(), 30 * 60L);
+        return new ImpersonateResponse(token, org.getNom(), org.getPays(), 30 * 60L);
     }
 
     @Transactional(readOnly = true)
