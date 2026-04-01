@@ -17,6 +17,7 @@ import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.PlatformAnnouncementRepository;
 import com.schedy.repository.PointageRepository;
+import com.schedy.repository.SiteRepository;
 import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.TotpEncryptionUtil;
@@ -48,6 +49,7 @@ public class EmployeService {
     private final EmployeRepository employeRepository;
     private final UserRepository userRepository;
     private final TenantContext tenantContext;
+    private final SiteRepository siteRepository;
     private final CreneauAssigneRepository creneauAssigneRepository;
     private final PointageRepository pointageRepository;
     private final DemandeCongeRepository demandeCongeRepository;
@@ -127,6 +129,12 @@ public class EmployeService {
                 && employeRepository.existsByEmailAndOrganisationId(dto.email(), orgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un employ\u00e9 avec l'email " + dto.email() + " existe d\u00e9j\u00e0.");
+        }
+        // Require at least one site when the organisation has sites
+        long siteCount = siteRepository.countByOrganisationId(orgId);
+        if (siteCount > 0 && (dto.siteIds() == null || dto.siteIds().isEmpty())) {
+            throw new BusinessRuleException(
+                    "L'employ\u00e9 doit \u00eatre affect\u00e9 \u00e0 au moins un site.");
         }
         Employe employe = Employe.builder()
                 .nom(dto.nom())
