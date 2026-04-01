@@ -16,6 +16,7 @@ public record ParametresDto(
     @Min(0) @Max(6) int premierJour,
     @DecimalMin("0.25") double dureeMinAffectation,
     @DecimalMin("1") @DecimalMax("168") double heuresMaxSemaine,
+    @DecimalMin("1") @DecimalMax("24") Double dureeMaxJour,
     @Size(max = 50) String taillePolice,
     @Size(max = 50) String planningVue,
     @DecimalMin("0.25") @DecimalMax("4") double planningGranularite,

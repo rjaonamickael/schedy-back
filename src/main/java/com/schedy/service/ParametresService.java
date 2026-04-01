@@ -72,18 +72,19 @@ public class ParametresService {
         parametres.setHeureDebut(dto.heureDebut());
         parametres.setHeureFin(dto.heureFin());
         if (dto.joursActifs() != null) {
-            parametres.getJoursActifs().clear();
-            parametres.getJoursActifs().addAll(dto.joursActifs());
+            parametres.setJoursActifs(new java.util.ArrayList<>(dto.joursActifs()));
         }
         parametres.setPremierJour(dto.premierJour());
         parametres.setDureeMinAffectation(dto.dureeMinAffectation());
         parametres.setHeuresMaxSemaine(dto.heuresMaxSemaine());
+        if (dto.dureeMaxJour() != null) {
+            parametres.setDureeMaxJour(dto.dureeMaxJour());
+        }
         parametres.setTaillePolice(dto.taillePolice());
         parametres.setPlanningVue(dto.planningVue());
         parametres.setPlanningGranularite(dto.planningGranularite());
         if (dto.reglesAffectation() != null) {
-            parametres.getReglesAffectation().clear();
-            parametres.getReglesAffectation().addAll(dto.reglesAffectation());
+            parametres.setReglesAffectation(new java.util.ArrayList<>(dto.reglesAffectation()));
         }
         if (dto.delaiSignalementAbsenceMinutes() != null) {
             parametres.setDelaiSignalementAbsenceMinutes(dto.delaiSignalementAbsenceMinutes());
