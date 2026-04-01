@@ -22,7 +22,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${spring.mail.from:noreply@schedy.app}")
+    @Value("${spring.mail.from:no-reply@schedy.work}")
     private String fromAddress;
 
     @Value("${schedy.frontend-url:http://localhost:4200}")
