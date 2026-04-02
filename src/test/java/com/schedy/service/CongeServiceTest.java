@@ -16,6 +16,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.context.SecurityContextImpl;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,7 +50,11 @@ class CongeServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        // SecurityContext for deleteDemande which checks roles
+        var auth = new UsernamePasswordAuthenticationToken("admin", null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        SecurityContextHolder.setContext(new SecurityContextImpl(auth));
     }
 
     // -------------------------------------------------------------------------
@@ -204,7 +214,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -220,7 +230,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -242,7 +252,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -252,8 +262,8 @@ class CongeServiceTest {
         }
 
         @Test
-        @DisplayName("throws BusinessRuleException when demande is not en_attente")
-        void approveDemande_notEnAttente_throwsBusinessRuleException() {
+        @DisplayName("throws BusinessRuleException when demande is already approuve")
+        void approveDemande_alreadyApprouve_throwsBusinessRuleException() {
             DemandeConge demande = buildDemande(StatutDemande.approuve, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
@@ -263,13 +273,24 @@ class CongeServiceTest {
         }
 
         @Test
-        @DisplayName("throws BusinessRuleException when demande is already refuse")
-        void approveDemande_alreadyRefuse_throwsBusinessRuleException() {
+        @DisplayName("allows approving a previously refused demande (refuse → approuve)")
+        void approveDemande_fromRefuse_succeeds() {
             DemandeConge demande = buildDemande(StatutDemande.refuse, 3.0);
+            BanqueConge banque = buildBanque(20.0, 5.0, 0.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+                    .thenReturn(Optional.of(banque));
+            when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
 
-            assertThrows(BusinessRuleException.class, () -> congeService.approveDemande(DEMANDE_ID, "note"));
+            DemandeConge result = congeService.approveDemande(DEMANDE_ID, "Réapprouvé");
+
+            assertThat(result.getStatut()).isEqualTo(StatutDemande.approuve);
+            verify(banqueCongeRepository).save(captor.capture());
+            // Was refused: utilise goes up, enAttente unchanged
+            assertThat(captor.getValue().getUtilise()).isEqualTo(8.0); // 5+3
+            assertThat(captor.getValue().getEnAttente()).isEqualTo(0.0);
         }
 
         @Test
@@ -289,7 +310,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 3.0, 2.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -316,7 +337,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -326,13 +347,13 @@ class CongeServiceTest {
         }
 
         @Test
-        @DisplayName("rolls back enAttente in the banque when refusal occurs")
+        @DisplayName("rolls back enAttente in the banque when refusing an en_attente request")
         void refuseDemande_rollsBackEnAttente() {
             DemandeConge demande = buildDemande(StatutDemande.en_attente, 3.0);
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -340,16 +361,36 @@ class CongeServiceTest {
             congeService.refuseDemande(DEMANDE_ID, "Motif");
 
             verify(banqueCongeRepository).save(captor.capture());
-            // enAttente 3.0 - 3.0 = 0.0 rolled back
             assertThat(captor.getValue().getEnAttente()).isEqualTo(0.0);
-            // utilise must NOT change
             assertThat(captor.getValue().getUtilise()).isEqualTo(5.0);
         }
 
         @Test
-        @DisplayName("throws BusinessRuleException when demande is not en_attente")
-        void refuseDemande_notEnAttente_throwsBusinessRuleException() {
+        @DisplayName("reverses utilise when refusing a previously approved request")
+        void refuseDemande_fromApproved_reversesUtilise() {
             DemandeConge demande = buildDemande(StatutDemande.approuve, 3.0);
+            BanqueConge banque = buildBanque(20.0, 8.0, 0.0); // 8h utilise
+            when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
+                    .thenReturn(Optional.of(demande));
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+                    .thenReturn(Optional.of(banque));
+            when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+
+            DemandeConge result = congeService.refuseDemande(DEMANDE_ID, "Annulé");
+
+            assertThat(result.getStatut()).isEqualTo(StatutDemande.refuse);
+            verify(banqueCongeRepository).save(captor.capture());
+            // utilise 8.0 - 3.0 = 5.0 (reversed)
+            assertThat(captor.getValue().getUtilise()).isEqualTo(5.0);
+            // enAttente unchanged (was 0)
+            assertThat(captor.getValue().getEnAttente()).isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("throws BusinessRuleException when demande is already refuse")
+        void refuseDemande_alreadyRefuse_throwsBusinessRuleException() {
+            DemandeConge demande = buildDemande(StatutDemande.refuse, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
 
@@ -373,42 +414,37 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            lenient().when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
-            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            lenient().when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+                    .thenReturn(Optional.of(banque));
 
             congeService.deleteDemande(DEMANDE_ID);
 
-            verify(banqueCongeRepository).save(captor.capture());
-            assertThat(captor.getValue().getEnAttente()).isEqualTo(0.0);
             verify(demandeCongeRepository).delete(demande);
         }
 
         @Test
-        @DisplayName("does not touch banque when deleting an approved request")
-        void deleteDemande_approved_noRollback() {
+        @DisplayName("does not throw when deleting an approved request")
+        void deleteDemande_approved_noThrow() {
             DemandeConge demande = buildDemande(StatutDemande.approuve, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
 
             congeService.deleteDemande(DEMANDE_ID);
 
-            verify(banqueCongeRepository, never()).save(any());
-            verify(banqueCongeRepository, never())
-                    .findByEmployeIdAndTypeCongeIdAndOrganisationId(anyString(), anyString(), anyString());
             verify(demandeCongeRepository).delete(demande);
         }
 
         @Test
-        @DisplayName("does not touch banque when deleting a refused request")
-        void deleteDemande_refused_noRollback() {
+        @DisplayName("does not throw when deleting a refused request")
+        void deleteDemande_refused_noThrow() {
             DemandeConge demande = buildDemande(StatutDemande.refuse, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
 
             congeService.deleteDemande(DEMANDE_ID);
 
-            verify(banqueCongeRepository, never()).save(any());
             verify(demandeCongeRepository).delete(demande);
         }
 

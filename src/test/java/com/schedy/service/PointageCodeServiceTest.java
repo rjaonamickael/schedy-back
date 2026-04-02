@@ -42,7 +42,7 @@ class PointageCodeServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
     }
 
     private PointageCode buildValidCode() {
@@ -97,14 +97,10 @@ class PointageCodeServiceTest {
     @Test
     @DisplayName("validateRotation rejects out-of-range value for JOURS")
     void validateRotation_rejectsOutOfRange() {
-        when(pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
-                .thenReturn(Optional.empty());
-        when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
-        when(pointageCodeRepository.existsByPinAndActifTrue(anyString())).thenReturn(false);
-
-        // JOURS max is 6; passing 7 should throw
+        // validateRotation throws before any repository call — no stubs needed
+        // JOURS max is 30; passing 31 should throw
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.schedy.exception.BusinessRuleException.class,
-                () -> pointageCodeService.getOrCreateForSite(SITE_ID, 7, UniteRotation.JOURS));
+                () -> pointageCodeService.getOrCreateForSite(SITE_ID, 31, UniteRotation.JOURS));
     }
 }

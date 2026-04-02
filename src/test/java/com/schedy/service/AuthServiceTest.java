@@ -55,7 +55,7 @@ class AuthServiceTest {
         User user = buildUser(User.UserRole.MANAGER);
         when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(PASSWORD, ENCODED)).thenReturn(true);
-        when(jwtUtil.generateAccessToken(anyString(), anyString(), anyString())).thenReturn("access");
+        when(jwtUtil.generateAccessToken(anyString(), anyString(), any())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(anyString())).thenReturn("refresh");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(organisationRepository.findById(ORG_ID))
@@ -100,7 +100,7 @@ class AuthServiceTest {
         RegisterRequest req = new RegisterRequest(EMAIL, PASSWORD, "ADMIN", null, ORG_ID);
         when(userRepository.existsByEmail(EMAIL)).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> authService.register(req));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> authService.register(req));
         verify(userRepository, never()).save(any());
     }
 
@@ -110,7 +110,7 @@ class AuthServiceTest {
         RegisterRequest req = new RegisterRequest(EMAIL, PASSWORD, "EMPLOYEE", null, ORG_ID);
         when(userRepository.existsByEmail(EMAIL)).thenReturn(false);
         when(passwordEncoder.encode(PASSWORD)).thenReturn(ENCODED);
-        when(jwtUtil.generateAccessToken(anyString(), anyString(), anyString())).thenReturn("access");
+        when(jwtUtil.generateAccessToken(anyString(), anyString(), any())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(anyString())).thenReturn("refresh");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // register() creates a user with null organisationId (self-registration ignores org),

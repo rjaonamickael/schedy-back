@@ -40,6 +40,12 @@ class EmployeServiceTest {
     @Mock private DemandeCongeRepository demandeCongeRepository;
     @Mock private BanqueCongeRepository banqueCongeRepository;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private SubscriptionRepository subscriptionRepository;
+    @Mock private com.schedy.util.TotpEncryptionUtil pinEncryptionUtil;
+    @Mock private SiteRepository siteRepository;
+    @Mock private EmailService emailService;
+    @Mock private OrganisationRepository organisationRepository;
+    @Mock private PlatformAnnouncementRepository announcementRepository;
 
     @InjectMocks private EmployeService employeService;
 
@@ -50,8 +56,15 @@ class EmployeServiceTest {
 
     @BeforeEach
     void setUp() {
-        // lenient: Sha256 tests call a static helper and never interact with tenantContext
+        // lenient: not all tests need all stubs
         lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        // Subscription: allow up to 100 employees by default
+        lenient().when(subscriptionRepository.findByOrganisationId(ORG_ID))
+                .thenReturn(Optional.of(com.schedy.entity.Subscription.builder()
+                        .maxEmployees(100).build()));
+        lenient().when(employeRepository.countByOrganisationId(ORG_ID)).thenReturn(0L);
+        // PIN encryption
+        lenient().when(pinEncryptionUtil.encrypt(anyString())).thenAnswer(inv -> "ENC_" + inv.getArgument(0));
     }
 
     // -------------------------------------------------------------------------

@@ -92,9 +92,21 @@ public class ReplacementService {
                 .mapToDouble(id -> getHeuresSemaine(tousCreneaux, id, semaine))
                 .summaryStatistics();
 
+        // Check if this day is a public holiday for the creneau's site
+        boolean estFerie = estJourFerie(feries, dateCreneau, creneau.getSiteId());
+        if (estFerie) {
+            log.info("Replacement search skipped: {} is a public holiday for site {}", dateCreneau, creneau.getSiteId());
+            return List.of();
+        }
+
         return tousEmployes.stream()
                 .filter(emp -> !absentsDuJour.contains(emp.getId()))
-                .filter(emp -> !estEnConge(congesApprouves, emp.getId(), dateCreneau))
+                // Site membership: employee must belong to the creneau's site
+                .filter(emp -> emp.getSiteIds() != null
+                        && emp.getSiteIds().contains(creneau.getSiteId()))
+                // Leave check with hour-level overlap
+                .filter(emp -> !estEnConge(congesApprouves, emp.getId(), dateCreneau,
+                        creneau.getHeureDebut(), creneau.getHeureFin()))
                 .filter(emp -> !aConflitCrossSite(emp.getId(), creneau.getJour(),
                         creneau.getHeureDebut(), creneau.getHeureFin(), tousCreneaux, semaine))
                 .filter(emp -> {
@@ -175,16 +187,34 @@ public class ReplacementService {
 
     // ── Contraintes réutilisées du GreedySolver ──────────────────
 
-    private boolean estEnConge(List<DemandeConge> conges, String employeId, LocalDate date) {
+    private boolean estEnConge(List<DemandeConge> conges, String employeId,
+                                LocalDate date, double slotDebut, double slotFin) {
         return conges.stream().anyMatch(d -> {
             if (!d.getEmployeId().equals(employeId)) return false;
             if (date.isBefore(d.getDateDebut()) || date.isAfter(d.getDateFin())) return false;
-            if (d.getHeureDebut() != null && d.getHeureFin() != null) {
-                boolean isBoundaryDay = date.equals(d.getDateDebut()) || date.equals(d.getDateFin());
-                return !isBoundaryDay;
-            }
-            return true;
+
+            // No hour precision → full-day leave
+            if (d.getHeureDebut() == null || d.getHeureFin() == null) return true;
+
+            // Hour-scoped leave: compute the leave window for this specific day
+            double leaveStart = date.equals(d.getDateDebut()) ? d.getHeureDebut() : 0.0;
+            double leaveEnd   = date.equals(d.getDateFin())   ? d.getHeureFin()   : 24.0;
+
+            // Overlap: slot [slotDebut, slotFin[ and leave [leaveStart, leaveEnd[
+            return slotDebut < leaveEnd - EPSILON && leaveStart < slotFin - EPSILON;
         });
+    }
+
+    private boolean estJourFerie(List<JourFerie> feries, LocalDate date, String siteId) {
+        return feries.stream()
+                .filter(f -> f.getSiteId() == null || f.getSiteId().equals(siteId))
+                .anyMatch(f -> {
+                    if (f.isRecurrent()) {
+                        return f.getDate().getMonthValue() == date.getMonthValue()
+                                && f.getDate().getDayOfMonth() == date.getDayOfMonth();
+                    }
+                    return f.getDate().equals(date);
+                });
     }
 
     private boolean estDisponible(Employe emp, int jour, double temps, double granularite) {

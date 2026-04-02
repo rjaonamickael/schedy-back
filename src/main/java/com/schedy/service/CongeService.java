@@ -297,25 +297,32 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
-        if (demande.getStatut() != StatutDemande.en_attente) {
-            throw new BusinessRuleException("Seules les demandes en attente peuvent etre approuvees");
+
+        StatutDemande statutActuel = demande.getStatut();
+        if (statutActuel != StatutDemande.en_attente && statutActuel != StatutDemande.refuse) {
+            throw new BusinessRuleException("Seules les demandes en attente ou refusees peuvent etre approuvees");
         }
+
+        boolean wasRefused = (statutActuel == StatutDemande.refuse);
 
         demande.setStatut(StatutDemande.approuve);
         demande.setNoteApprobation(note);
-        log.info("Leave request {} approved", id);
+        log.info("Leave request {} approved (was {})", id, statutActuel);
         demandeCongeRepository.save(demande);
 
-        // Move from enAttente to utilise (optimistic locking guards against concurrent quota updates)
+        // Update quota: move days to utilise
         try {
             banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
                     .ifPresent(banque -> {
-                        banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        if (!wasRefused) {
+                            // Was en_attente: move from enAttente to utilise
+                            banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        }
+                        // In both cases: add to utilise
                         banque.setUtilise(banque.getUtilise() + demande.getDuree());
                         banqueCongeRepository.save(banque);
                     });
         } catch (ObjectOptimisticLockingFailureException e) {
-            // B-18: Use Spring's wrapper rather than JPA's raw OptimisticLockException
             throw new BusinessRuleException("Requete concurrente, reessayez");
         }
 
@@ -327,24 +334,32 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
-        if (demande.getStatut() != StatutDemande.en_attente) {
-            throw new BusinessRuleException("Seules les demandes en attente peuvent etre refusees");
+
+        StatutDemande statutActuel = demande.getStatut();
+        if (statutActuel != StatutDemande.en_attente && statutActuel != StatutDemande.approuve) {
+            throw new BusinessRuleException("Seules les demandes en attente ou approuvees peuvent etre refusees");
         }
+
+        boolean wasApproved = (statutActuel == StatutDemande.approuve);
 
         demande.setStatut(StatutDemande.refuse);
         demande.setNoteApprobation(note);
-        log.info("Leave request {} refused", id);
+        log.info("Leave request {} refused (was {})", id, statutActuel);
         demandeCongeRepository.save(demande);
 
-        // Rollback enAttente (optimistic locking guards against concurrent quota updates)
         try {
             banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
                     .ifPresent(banque -> {
-                        banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        if (wasApproved) {
+                            // Reverse the approval: move from utilise back to solde
+                            banque.setUtilise(Math.max(0, banque.getUtilise() - demande.getDuree()));
+                        } else {
+                            // Was en_attente: release the pending reservation
+                            banque.setEnAttente(Math.max(0, banque.getEnAttente() - demande.getDuree()));
+                        }
                         banqueCongeRepository.save(banque);
                     });
         } catch (ObjectOptimisticLockingFailureException e) {
-            // B-18: Use Spring's wrapper rather than JPA's raw OptimisticLockException
             throw new BusinessRuleException("Requete concurrente, reessayez");
         }
 
