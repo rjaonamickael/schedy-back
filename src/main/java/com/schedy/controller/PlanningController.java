@@ -104,7 +104,7 @@ public class PlanningController {
     @PostMapping("/auto-affecter")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<AutoAffectationResponse> autoAffecter(@Valid @RequestBody AutoAffectationRequest request) {
-        var result = autoAffectationService.autoAffecter(request.semaine(), request.siteId());
+        var result = autoAffectationService.autoAffecter(request.semaine(), request.siteId(), request.forceReplace());
         List<CreneauAssigneResponse> creneauxDto = result.creneaux().stream()
                 .map(CreneauAssigneResponse::from)
                 .toList();

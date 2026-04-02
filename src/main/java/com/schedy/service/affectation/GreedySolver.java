@@ -5,6 +5,8 @@ import com.schedy.entity.DemandeConge;
 import com.schedy.entity.Employe;
 import com.schedy.entity.Exigence;
 import com.schedy.entity.JourFerie;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -28,6 +30,8 @@ import java.util.Set;
  */
 @Component
 public class GreedySolver implements AffectationSolver {
+
+    private static final Logger log = LoggerFactory.getLogger(GreedySolver.class);
 
     /** Floating-point epsilon used for granularity-aware double comparisons. */
     private static final double EPSILON = 1e-9;
@@ -63,7 +67,7 @@ public class GreedySolver implements AffectationSolver {
 
             // Fix #5: holiday short-circuit — evaluate ONCE per day, outside employee loop
             LocalDate dateJour = dateParJour.get(jour);
-            if (dateJour == null || estJourFerie(ctx.joursFeries(), dateJour)) {
+            if (dateJour == null || estJourFerie(ctx.joursFeries(), dateJour, exigence.getSiteId())) {
                 continue;
             }
 
@@ -110,6 +114,14 @@ public class GreedySolver implements AffectationSolver {
                     // Fix #3: group with granularity-aware epsilon comparison
                     List<double[]> plages = grouperConsecutives(heuresCouvrables, ctx.granularite());
 
+                    // Weekly hours remaining budget
+                    double heuresActuelles = getHeuresSemaine(
+                            tousLesCreneaux, emp.getId(), ctx.semaine());
+                    double remaining = ctx.heuresMaxSemaine() - heuresActuelles;
+
+                    // Skip employee entirely if remaining budget < dureeMin
+                    if (remaining < ctx.dureeMin() - EPSILON) continue;
+
                     Optional<double[]> meilleurePlage = plages.stream()
                             .filter(p -> (p[1] - p[0]) >= ctx.dureeMin() - EPSILON)
                             .max(Comparator.comparingDouble(p -> p[1] - p[0]));
@@ -118,18 +130,19 @@ public class GreedySolver implements AffectationSolver {
 
                     double[] plage = meilleurePlage.get();
 
+                    // Truncate block to fit within remaining weekly budget
+                    double dureePlage = plage[1] - plage[0];
+                    if (dureePlage > remaining + EPSILON) {
+                        plage = new double[]{plage[0], plage[0] + remaining};
+                        dureePlage = remaining;
+                        // Verify truncated block still meets dureeMin
+                        if (dureePlage < ctx.dureeMin() - EPSILON) continue;
+                    }
+
                     // Fix #2: cross-site conflict — employee must not already be assigned
                     // on ANY site during the proposed block
                     if (aConflitCrossSite(emp.getId(), jour, plage[0], plage[1],
                             tousLesCreneaux, ctx.semaine())) {
-                        continue;
-                    }
-
-                    // Fix #10: weekly hours cap across ALL sites
-                    double heuresActuelles = getHeuresSemaine(
-                            tousLesCreneaux, emp.getId(), ctx.semaine());
-                    double dureePlage = plage[1] - plage[0];
-                    if (heuresActuelles + dureePlage > ctx.heuresMaxSemaine() + EPSILON) {
                         continue;
                     }
 
@@ -310,9 +323,11 @@ public class GreedySolver implements AffectationSolver {
                                             ContexteAffectation ctx) {
         return ctx.employes().stream()
                 .filter(emp -> Objects.equals(emp.getRole(), exigence.getRole()))
+                .filter(emp -> emp.getSiteIds() != null
+                        && emp.getSiteIds().contains(exigence.getSiteId()))
                 .filter(emp -> !dejaPresents.contains(emp.getId()))
-                .filter(emp -> !estEnConge(ctx.congesApprouves(), emp.getId(), dateJour))
-                // Fix #5: estJourFerie already checked once outside; guard kept here for safety
+                .filter(emp -> !estEnConge(ctx.congesApprouves(), emp.getId(), dateJour,
+                        exigence.getHeureDebut(), exigence.getHeureFin()))
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
@@ -324,6 +339,17 @@ public class GreedySolver implements AffectationSolver {
     private void trierCandidats(List<Employe> candidats, List<String> regles,
                                  int jour, List<CreneauAssigne> creneaux,
                                  ContexteAffectation ctx) {
+
+        // Warn about missing dateEmbauche when anciennete is active
+        if (regles.contains("anciennete")) {
+            for (Employe emp : candidats) {
+                if (emp.getDateEmbauche() == null) {
+                    log.warn("[Affectation] Employe {} ({}) sans dateEmbauche — sera traite comme le plus junior",
+                            emp.getId(), emp.getNom());
+                }
+            }
+        }
+
         candidats.sort((a, b) -> {
             for (String regle : regles) {
                 int diff = 0;
@@ -353,7 +379,8 @@ public class GreedySolver implements AffectationSolver {
                 }
                 if (diff != 0) return diff;
             }
-            return 0;
+            // Deterministic tiebreaker: stable ordering by ID when all rules are equal
+            return a.getId().compareTo(b.getId());
         });
     }
 
@@ -368,11 +395,22 @@ public class GreedySolver implements AffectationSolver {
      *
      * <p>Only newly created creneaux are candidates for the swap to avoid disturbing
      * manually-set existing assignments.
+     *
+     * <p>The 2-swap is SKIPPED when non-equity priority rules (anciennete, age) are
+     * active, because swapping based on hours alone would violate the user's
+     * configured priority ordering.
      */
     private void appliquer2Swap(List<CreneauAssigne> nouveauxCreneaux,
                                   List<CreneauAssigne> tousLesCreneaux,
                                   ContexteAffectation ctx,
                                   Map<Integer, LocalDate> dateParJour) {
+
+        // Skip 2-swap when non-equity priority rules are active — swapping would
+        // destroy the ordering established by anciennete/age/disponibilite rules.
+        boolean hasNonEquityRules = ctx.regles().stream()
+                .anyMatch(r -> !r.equals("equite"));
+        if (hasNonEquityRules) return;
+
         final int MAX_SWAP_ITERATIONS = 100;
 
         for (int iter = 0; iter < MAX_SWAP_ITERATIONS; iter++) {
@@ -416,6 +454,12 @@ public class GreedySolver implements AffectationSolver {
                     LocalDate dateJour = dateParJour.get(jour);
                     if (dateJour == null) continue;
 
+                    // empMin must belong to the site of the creneau
+                    if (empMin.getSiteIds() == null
+                            || !empMin.getSiteIds().contains(creneau.getSiteId())) {
+                        continue;
+                    }
+
                     // empMin must be available during this entire block
                     if (!estDisponiblePlage(empMin, jour,
                             creneau.getHeureDebut(), creneau.getHeureFin(),
@@ -424,7 +468,8 @@ public class GreedySolver implements AffectationSolver {
                     }
 
                     // empMin must not be on leave
-                    if (estEnConge(ctx.congesApprouves(), empMin.getId(), dateJour)) {
+                    if (estEnConge(ctx.congesApprouves(), empMin.getId(), dateJour,
+                            creneau.getHeureDebut(), creneau.getHeureFin())) {
                         continue;
                     }
 
@@ -461,41 +506,46 @@ public class GreedySolver implements AffectationSolver {
     // =========================================================================
 
     /**
-     * Returns true if the given date is a public holiday.
+     * Returns true if the given date is a public holiday for the given site.
+     * Holidays with {@code siteId == null} apply to ALL sites (org-wide).
      * Supports recurrent holidays (same month/day regardless of year).
-     * Fix #5: called once per day, outside any employee loop.
      */
-    private boolean estJourFerie(List<JourFerie> feries, LocalDate date) {
-        return feries.stream().anyMatch(f -> {
-            if (f.isRecurrent()) {
-                return f.getDate().getMonthValue() == date.getMonthValue()
-                        && f.getDate().getDayOfMonth() == date.getDayOfMonth();
-            }
-            return f.getDate().equals(date);
-        });
+    private boolean estJourFerie(List<JourFerie> feries, LocalDate date, String siteId) {
+        return feries.stream()
+                .filter(f -> f.getSiteId() == null || f.getSiteId().equals(siteId))
+                .anyMatch(f -> {
+                    if (f.isRecurrent()) {
+                        return f.getDate().getMonthValue() == date.getMonthValue()
+                                && f.getDate().getDayOfMonth() == date.getDayOfMonth();
+                    }
+                    return f.getDate().equals(date);
+                });
     }
 
     /**
-     * Returns true if the employee has an approved leave covering the given date.
-     * When the leave has hour-level precision, checks that the entire day is blocked
-     * rather than a partial overlap.
+     * Returns true if the employee has an approved leave overlapping the proposed
+     * slot [slotDebut, slotFin[ on the given date.
+     *
+     * <p>For full-day leaves (no hour precision), the entire day is blocked.
+     * For hour-scoped leaves, the actual leave window is computed per day:
+     * on the start day the leave begins at heureDebut, on the end day it ends
+     * at heureFin, and on interior days the full day (0-24) is blocked.
      */
-    private boolean estEnConge(List<DemandeConge> conges, String employeId, LocalDate date) {
+    private boolean estEnConge(List<DemandeConge> conges, String employeId,
+                                LocalDate date, double slotDebut, double slotFin) {
         return conges.stream().anyMatch(d -> {
             if (!d.getEmployeId().equals(employeId)) return false;
             if (date.isBefore(d.getDateDebut()) || date.isAfter(d.getDateFin())) return false;
-            // If the leave carries hour boundaries and this is a boundary day, honour them
-            // (a partial-day leave does NOT block the full day)
-            if (d.getHeureDebut() != null && d.getHeureFin() != null) {
-                // Boundary start day: employee is only blocked after heureDebut
-                // Boundary end day: employee is only blocked until heureFin
-                // For simplicity in the solver context we treat any hour-scoped leave
-                // as a full-day block only on the days strictly between start and end.
-                // On boundary days the employee remains schedulable (conservative approach).
-                boolean isBoundaryDay = date.equals(d.getDateDebut()) || date.equals(d.getDateFin());
-                return !isBoundaryDay;
-            }
-            return true;
+
+            // No hour precision → full-day leave
+            if (d.getHeureDebut() == null || d.getHeureFin() == null) return true;
+
+            // Hour-scoped leave: compute the leave window for this specific day
+            double leaveStart = date.equals(d.getDateDebut()) ? d.getHeureDebut() : 0.0;
+            double leaveEnd   = date.equals(d.getDateFin())   ? d.getHeureFin()   : 24.0;
+
+            // Overlap: slot [slotDebut, slotFin[ and leave [leaveStart, leaveEnd[
+            return slotDebut < leaveEnd - EPSILON && leaveStart < slotFin - EPSILON;
         });
     }
 

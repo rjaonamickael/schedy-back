@@ -32,8 +32,17 @@ public class AutoAffectationService {
     private final AffectationSolver solver;
 
     @Transactional
-    public AutoAffectationResult autoAffecter(String semaine, String siteId) {
+    public AutoAffectationResult autoAffecter(String semaine, String siteId, boolean forceReplace) {
         String orgId = tenantContext.requireOrganisationId();
+
+        // ── Force replace: delete existing creneaux for this week/site ──
+        if (forceReplace) {
+            if (siteId != null) {
+                creneauRepository.deleteBySemaineAndSiteIdAndOrganisationId(semaine, siteId, orgId);
+            } else {
+                creneauRepository.deleteBySemaineAndOrganisationId(semaine, orgId);
+            }
+        }
 
         // ── Load all data ──────────────────────────────────────
         List<Exigence> exigences = loadExigences(orgId, siteId);
@@ -104,17 +113,19 @@ public class AutoAffectationService {
     }
 
     private Parametres loadParametres(String orgId, String siteId) {
-        Optional<Parametres> params;
+        // 1. Try site-level parametres
         if (siteId != null) {
-            params = parametresRepository.findBySiteIdAndOrganisationId(siteId, orgId);
-        } else {
-            params = parametresRepository.findBySiteIdIsNullAndOrganisationId(orgId);
+            Optional<Parametres> siteParams =
+                    parametresRepository.findBySiteIdAndOrganisationId(siteId, orgId);
+            if (siteParams.isPresent()) return siteParams.get();
         }
-        return params.orElseGet(() -> Parametres.builder()
-                .dureeMinAffectation(1.0)
-                .heuresMaxSemaine(48.0)
-                .reglesAffectation(List.of("disponibilite", "equite"))
-                .build());
+        // 2. Fallback to org-level parametres (siteId IS NULL)
+        return parametresRepository.findBySiteIdIsNullAndOrganisationId(orgId)
+                .orElseGet(() -> Parametres.builder()
+                        .dureeMinAffectation(1.0)
+                        .heuresMaxSemaine(48.0)
+                        .reglesAffectation(List.of("disponibilite", "equite"))
+                        .build());
     }
 
     // ── Week date utilities ────────────────────────────────────

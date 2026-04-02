@@ -4,5 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public record AutoAffectationRequest(
     @NotBlank String semaine,
-    String siteId
+    String siteId,
+    boolean forceReplace
 ) {}
