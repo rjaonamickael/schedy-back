@@ -4,6 +4,7 @@ import com.schedy.config.TenantContext;
 import com.schedy.entity.*;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
+import com.schedy.service.affectation.SchedulingConstraints;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ReplacementService {
 
-    private static final double EPSILON = 1e-9;
+    // B-12: Use the canonical constant from SchedulingConstraints — single source of truth.
+    private static final double EPSILON = SchedulingConstraints.EPSILON;
 
     static final int POIDS_DISPONIBILITE = 30;
     static final int POIDS_MEME_ROLE = 25;
@@ -186,42 +188,16 @@ public class ReplacementService {
     }
 
     // ── Contraintes réutilisées du GreedySolver ──────────────────
+    // B-12: All constraint logic has been consolidated in SchedulingConstraints.
+    // These private methods delegate directly to avoid code divergence.
 
     private boolean estEnConge(List<DemandeConge> conges, String employeId,
                                 LocalDate date, double slotDebut, double slotFin) {
-        return conges.stream().anyMatch(d -> {
-            if (!d.getEmployeId().equals(employeId)) return false;
-            if (date.isBefore(d.getDateDebut()) || date.isAfter(d.getDateFin())) return false;
-
-            // No hour precision → full-day leave
-            if (d.getHeureDebut() == null || d.getHeureFin() == null) return true;
-
-            // Hour-scoped leave: compute the leave window for this specific day
-            double leaveStart = date.equals(d.getDateDebut()) ? d.getHeureDebut() : 0.0;
-            double leaveEnd   = date.equals(d.getDateFin())   ? d.getHeureFin()   : 24.0;
-
-            // Overlap: slot [slotDebut, slotFin[ and leave [leaveStart, leaveEnd[
-            return slotDebut < leaveEnd - EPSILON && leaveStart < slotFin - EPSILON;
-        });
+        return SchedulingConstraints.estEnConge(conges, employeId, date, slotDebut, slotFin);
     }
 
     private boolean estJourFerie(List<JourFerie> feries, LocalDate date, String siteId) {
-        return feries.stream()
-                .filter(f -> f.getSiteId() == null || f.getSiteId().equals(siteId))
-                .anyMatch(f -> {
-                    if (f.isRecurrent()) {
-                        return f.getDate().getMonthValue() == date.getMonthValue()
-                                && f.getDate().getDayOfMonth() == date.getDayOfMonth();
-                    }
-                    return f.getDate().equals(date);
-                });
-    }
-
-    private boolean estDisponible(Employe emp, int jour, double temps, double granularite) {
-        return emp.getDisponibilites().stream().anyMatch(d ->
-                d.getJour() == jour
-                        && temps >= d.getHeureDebut() - EPSILON
-                        && temps + granularite <= d.getHeureFin() + EPSILON);
+        return SchedulingConstraints.estJourFerie(feries, date, siteId);
     }
 
     private boolean estDisponiblePlage(Employe emp, int jour,
@@ -231,31 +207,17 @@ public class ReplacementService {
         if (emp.getDisponibilites() == null || emp.getDisponibilites().isEmpty()) {
             return true;
         }
-        // Défense contre une granularité nulle ou négative qui provoquerait une boucle infinie.
-        double step = (granularite > EPSILON) ? granularite : 0.5;
-        for (double h = heureDebut; h < heureFin - EPSILON; h += step) {
-            if (!estDisponible(emp, jour, h, step)) return false;
-        }
-        return true;
+        return SchedulingConstraints.estDisponiblePlage(emp, jour, heureDebut, heureFin, granularite);
     }
 
     private boolean aConflitCrossSite(String employeId, int jour,
                                        double heureDebut, double heureFin,
                                        List<CreneauAssigne> creneaux, String semaine) {
-        return creneaux.stream()
-                .filter(c -> c.getEmployeId().equals(employeId))
-                .filter(c -> c.getSemaine().equals(semaine))
-                .filter(c -> c.getJour() == jour)
-                .anyMatch(c -> heureDebut < c.getHeureFin() - EPSILON
-                        && c.getHeureDebut() < heureFin - EPSILON);
+        return SchedulingConstraints.aConflitCrossSite(employeId, jour, heureDebut, heureFin, creneaux, semaine);
     }
 
     private double getHeuresSemaine(List<CreneauAssigne> creneaux, String employeId, String semaine) {
-        return creneaux.stream()
-                .filter(c -> c.getEmployeId().equals(employeId))
-                .filter(c -> c.getSemaine().equals(semaine))
-                .mapToDouble(c -> c.getHeureFin() - c.getHeureDebut())
-                .sum();
+        return SchedulingConstraints.getHeuresSemaine(creneaux, employeId, semaine);
     }
 
     private LocalDate getDateFromCreneau(int jour, String semaine) {

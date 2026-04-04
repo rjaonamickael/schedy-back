@@ -18,6 +18,9 @@ public class DemandeConge {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false)
     private String employeId;
 

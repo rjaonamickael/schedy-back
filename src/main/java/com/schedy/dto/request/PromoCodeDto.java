@@ -12,5 +12,6 @@ public record PromoCodeDto(
     String planOverride,
     Integer maxUses,
     OffsetDateTime validFrom,
-    OffsetDateTime validTo
+    OffsetDateTime validTo,
+    Boolean active
 ) {}

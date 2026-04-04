@@ -33,7 +33,7 @@ public class CongeController {
 
     @GetMapping("/types/all")
     public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
-        var page = congeService.findAllTypes(PageRequest.of(0, 1000)).map(TypeCongeResponse::from);
+        var page = congeService.findAllTypes(PageRequest.of(0, 5000)).map(TypeCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
@@ -72,7 +72,7 @@ public class CongeController {
 
     @GetMapping("/banques/all")
     public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
-        var page = congeService.findAllBanques(PageRequest.of(0, 1000)).map(BanqueCongeResponse::from);
+        var page = congeService.findAllBanques(PageRequest.of(0, 5000)).map(BanqueCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
@@ -116,7 +116,7 @@ public class CongeController {
 
     @GetMapping("/demandes/all")
     public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
-        var page = congeService.findAllDemandes(PageRequest.of(0, 1000)).map(DemandeCongeResponse::from);
+        var page = congeService.findAllDemandes(PageRequest.of(0, 5000)).map(DemandeCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());

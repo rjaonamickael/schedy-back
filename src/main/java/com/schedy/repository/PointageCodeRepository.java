@@ -16,6 +16,7 @@ public interface PointageCodeRepository extends JpaRepository<PointageCode, Stri
     List<PointageCode> findBySiteId(String siteId);
     boolean existsByCodeAndActifTrue(String code);
     boolean existsByPinAndActifTrue(String pin);
+    boolean existsByPinHashAndActifTrue(String pinHash);
     void deleteByActifFalse();
     void deleteByOrganisationId(String organisationId);
 

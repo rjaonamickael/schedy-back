@@ -10,6 +10,7 @@ import com.schedy.exception.BusinessRuleException;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
 import com.schedy.util.CryptoUtil;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,9 +35,30 @@ public class PointageCodeService {
     private final EmployeRepository employeRepository;
     private final TenantContext tenantContext;
     private final PasswordEncoder passwordEncoder;
+    private final com.schedy.util.TotpEncryptionUtil pinEncryptionUtil;
 
     @Value("${schedy.kiosk.admin-code:}")
     private String kioskAdminCode;
+
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
+
+    @PostConstruct
+    public void validateKioskAdminCodeConfig() {
+        boolean isBlank = kioskAdminCode == null || kioskAdminCode.isBlank();
+        if (isBlank) {
+            if ("dev".equals(activeProfile)) {
+                kioskAdminCode = "2580";
+                log.warn("**SECURITY WARNING** schedy.kiosk.admin-code is not configured. " +
+                         "Using dev default. Set KIOSK_ADMIN_CODE environment variable " +
+                         "before deploying to production.");
+            } else {
+                throw new IllegalStateException(
+                    "Kiosk admin code must be configured. " +
+                    "Set KIOSK_ADMIN_CODE environment variable.");
+            }
+        }
+    }
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String ALPHANUMERIC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -237,7 +259,7 @@ public class PointageCodeService {
         PointageCode pointageCode = PointageCode.builder()
                 .siteId(siteId)
                 .code(code)
-                .pin(pin)
+                .pin(pinEncryptionUtil.encrypt(pin))
                 .pinHash(sha256(pin))
                 .rotationValeur(rotationValeur)
                 .rotationUnite(rotationUnite)
@@ -296,7 +318,9 @@ public class PointageCodeService {
             String newPin = String.format("%04d", RANDOM.nextInt(10000));
             emp.setPin(passwordEncoder.encode(newPin));
             emp.setPinHash(CryptoUtil.sha256(newPin));
-            emp.setPinClair(newPin);
+            // Fix SEC-02: encrypt PIN with AES-256-GCM instead of storing plaintext
+            emp.setPinClair(pinEncryptionUtil.encrypt(newPin));
+            emp.setPinClairEncrypted(true);
         }
         if (!employes.isEmpty()) {
             employeRepository.saveAll(employes);
@@ -329,7 +353,7 @@ public class PointageCodeService {
                 throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "Unable to generate unique PIN after 100 attempts");
             }
-        } while (pointageCodeRepository.existsByPinAndActifTrue(pin));
+        } while (pointageCodeRepository.existsByPinHashAndActifTrue(CryptoUtil.sha256(pin)));
         return pin;
     }
 
@@ -364,14 +388,12 @@ public class PointageCodeService {
     }
 
     /**
-     * Builds the public kiosk DTO. PIN is intentionally omitted — the PIN is only
-     * returned on the authenticated GET /site/{siteId} endpoint (PointageCodeDto).
+     * Builds the public kiosk DTO. PIN is intentionally excluded (B-01 fix).
      */
     private KioskPointageCodeResponse toKioskDto(PointageCode pc) {
         return new KioskPointageCodeResponse(
                 pc.getSiteId(),
                 pc.getCode(),
-                pc.getPin(),
                 pc.getRotationValeur(),
                 pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),

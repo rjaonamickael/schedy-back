@@ -2,11 +2,19 @@ package com.schedy.service;
 
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.*;
+import com.schedy.dto.response.AnnouncementResponse;
+import com.schedy.dto.response.FeatureFlagResponse;
 import com.schedy.dto.response.ImpersonateResponse;
+import com.schedy.dto.response.ImpersonationLogResponse;
 import com.schedy.dto.response.OrgSummaryResponse;
+import com.schedy.dto.response.PlanTemplateResponse;
+import com.schedy.dto.response.PromoCodeResponse;
+import com.schedy.dto.response.SubscriptionResponse;
 import com.schedy.dto.response.SuperAdminDashboardResponse;
 import com.schedy.entity.*;
 import com.schedy.repository.*;
+import com.schedy.util.CryptoUtil;
+import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -44,6 +52,8 @@ public class SuperAdminService {
     private final PointageCodeRepository        pointageCodeRepository;
     private final CreneauAssigneRepository      creneauAssigneRepository;
     private final DemandeCongeRepository        demandeCongeRepository;
+    private final AbsenceImprevueRepository     absenceImprevueRepository;
+    private final PauseRepository               pauseRepository;
     private final BanqueCongeRepository         banqueCongeRepository;
     private final ExigenceRepository            exigenceRepository;
     private final SiteRepository                siteRepository;
@@ -51,6 +61,7 @@ public class SuperAdminService {
     private final TypeCongeRepository           typeCongeRepository;
     private final JourFerieRepository           jourFerieRepository;
     private final ParametresRepository          parametresRepository;
+    private final PlanTemplateRepository        planTemplateRepository;
     private final PasswordEncoder               passwordEncoder;
     private final JwtUtil                       jwtUtil;
     private final EmailService                  emailService;
@@ -70,16 +81,18 @@ public class SuperAdminService {
         long totalUsers      = userRepository.count();
         long totalEmployees  = employeRepository.count();
 
-        Map<String, Long> orgsByPlan = Arrays.stream(Subscription.PlanTier.values())
+        Map<String, Long> orgsByPlan = subscriptionRepository.countByPlanTierGrouped()
+                .stream()
                 .collect(Collectors.toMap(
-                        Enum::name,
-                        tier -> (long) subscriptionRepository.findByPlanTier(tier).size()
+                        row -> ((Subscription.PlanTier) row[0]).name(),
+                        row -> (Long) row[1]
                 ));
 
-        Map<String, Long> orgsByStatus = Arrays.stream(Subscription.SubscriptionStatus.values())
+        Map<String, Long> orgsByStatus = subscriptionRepository.countByStatusGrouped()
+                .stream()
                 .collect(Collectors.toMap(
-                        Enum::name,
-                        status -> (long) subscriptionRepository.findByStatus(status).size()
+                        row -> ((Subscription.SubscriptionStatus) row[0]).name(),
+                        row -> (Long) row[1]
                 ));
 
         return new SuperAdminDashboardResponse(
@@ -192,8 +205,8 @@ public class SuperAdminService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un utilisateur avec cet email existe d\u00e9j\u00e0 : " + request.adminEmail());
         }
-        String rawToken = generateSecureToken();
-        String hashedToken = com.schedy.util.CryptoUtil.sha256(rawToken);
+        String rawToken = CryptoUtil.generateSecureToken();
+        String hashedToken = CryptoUtil.sha256(rawToken);
         User admin = User.builder()
                 .email(request.adminEmail())
                 .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
@@ -236,12 +249,14 @@ public class SuperAdminService {
         Organisation org = requireOrg(id);
         String orgId = org.getId();
 
-        // Cascade delete in dependency order
+        // Cascade delete in dependency order (leaf → root)
         pointageRepository.deleteByOrganisationId(orgId);
         pointageCodeRepository.deleteByOrganisationId(orgId);
         creneauAssigneRepository.deleteByOrganisationId(orgId);
         demandeCongeRepository.deleteByOrganisationId(orgId);
         banqueCongeRepository.deleteByOrganisationId(orgId);
+        absenceImprevueRepository.deleteByOrganisationId(orgId);
+        pauseRepository.deleteByOrganisationId(orgId);
         exigenceRepository.deleteByOrganisationId(orgId);
         employeRepository.deleteByOrganisationId(orgId);
         siteRepository.deleteByOrganisationId(orgId);
@@ -282,7 +297,19 @@ public class SuperAdminService {
     // =========================================================================
 
     @Transactional(readOnly = true)
-    public Subscription getSubscription(String orgId) {
+    public SubscriptionResponse getSubscription(String orgId) {
+        requireOrg(orgId);
+        Subscription sub = subscriptionRepository.findByOrganisationId(orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Aucun abonnement trouvé pour l'organisation : " + orgId));
+        return SubscriptionResponse.from(sub);
+    }
+
+    /**
+     * Internal helper that returns the raw entity — used by other service methods
+     * that need to mutate the Subscription before saving.
+     */
+    private Subscription requireSubscription(String orgId) {
         requireOrg(orgId);
         return subscriptionRepository.findByOrganisationId(orgId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -290,20 +317,23 @@ public class SuperAdminService {
     }
 
     @Transactional
-    public Subscription updateSubscription(String orgId, SubscriptionDto dto) {
-        Subscription sub = getSubscription(orgId);
+    public SubscriptionResponse updateSubscription(String orgId, SubscriptionDto dto) {
+        Subscription sub = requireSubscription(orgId);
         if (dto.planTier() != null) {
             sub.setPlanTier(Subscription.PlanTier.valueOf(dto.planTier().toUpperCase()));
         }
         sub.setMaxEmployees(dto.maxEmployees() > 0 ? dto.maxEmployees() : sub.getMaxEmployees());
         sub.setMaxSites(dto.maxSites() > 0 ? dto.maxSites() : sub.getMaxSites());
-        return subscriptionRepository.save(sub);
+        if (dto.trialEndsAt() != null) {
+            sub.setTrialEndsAt(dto.trialEndsAt());
+        }
+        return SubscriptionResponse.from(subscriptionRepository.save(sub));
     }
 
     @Transactional
-    public Subscription applyPromoCode(String orgId, String promoCodeStr) {
+    public SubscriptionResponse applyPromoCode(String orgId, String promoCodeStr) {
         PromoCode promo = validatePromoCode(promoCodeStr);
-        Subscription sub = getSubscription(orgId);
+        Subscription sub = requireSubscription(orgId);
 
         sub.setPromoCodeId(promo.getId());
         if (promo.getPlanOverride() != null) {
@@ -315,7 +345,7 @@ public class SuperAdminService {
         promoCodeRepository.save(promo);
 
         log.info("SuperAdmin: promo '{}' applied to org '{}'", promoCodeStr, orgId);
-        return subscriptionRepository.save(sub);
+        return SubscriptionResponse.from(subscriptionRepository.save(sub));
     }
 
     // =========================================================================
@@ -323,12 +353,14 @@ public class SuperAdminService {
     // =========================================================================
 
     @Transactional(readOnly = true)
-    public List<PromoCode> findAllPromoCodes() {
-        return promoCodeRepository.findAll();
+    public List<PromoCodeResponse> findAllPromoCodes() {
+        return promoCodeRepository.findAll().stream()
+                .map(PromoCodeResponse::from)
+                .toList();
     }
 
     @Transactional
-    public PromoCode createPromoCode(PromoCodeDto dto) {
+    public PromoCodeResponse createPromoCode(PromoCodeDto dto) {
         if (promoCodeRepository.existsByCode(dto.code().toUpperCase())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un code promo avec ce code existe déjà : " + dto.code());
@@ -342,23 +374,31 @@ public class SuperAdminService {
                 .maxUses(dto.maxUses())
                 .validFrom(dto.validFrom() != null ? dto.validFrom() : OffsetDateTime.now())
                 .validTo(dto.validTo())
-                .active(true)
+                .active(dto.active() != null ? dto.active() : true)
                 .build();
-        return promoCodeRepository.save(promo);
+        return PromoCodeResponse.from(promoCodeRepository.save(promo));
     }
 
     @Transactional
-    public PromoCode updatePromoCode(String id, PromoCodeDto dto) {
+    public PromoCodeResponse updatePromoCode(String id, PromoCodeDto dto) {
         PromoCode promo = promoCodeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Code promo introuvable : " + id));
+        // Reject updates on soft-deleted codes unless explicitly reactivating
+        if (!promo.isActive() && (dto.active() == null || !dto.active())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce code promo est désactivé. Envoyez active=true pour le réactiver.");
+        }
         promo.setDescription(dto.description());
         promo.setDiscountPercent(dto.discountPercent());
         promo.setDiscountMonths(dto.discountMonths());
         promo.setPlanOverride(dto.planOverride() != null ? dto.planOverride().toUpperCase() : null);
         promo.setMaxUses(dto.maxUses());
         promo.setValidTo(dto.validTo());
-        return promoCodeRepository.save(promo);
+        if (dto.active() != null) {
+            promo.setActive(dto.active());
+        }
+        return PromoCodeResponse.from(promoCodeRepository.save(promo));
     }
 
     @Transactional
@@ -407,15 +447,17 @@ public class SuperAdminService {
     // =========================================================================
 
     @Transactional(readOnly = true)
-    public List<FeatureFlag> getFeatureFlags(String orgId) {
+    public List<FeatureFlagResponse> getFeatureFlags(String orgId) {
         requireOrg(orgId);
-        return featureFlagRepository.findByOrganisationId(orgId);
+        return featureFlagRepository.findByOrganisationId(orgId).stream()
+                .map(FeatureFlagResponse::from)
+                .toList();
     }
 
     @Transactional
-    public List<FeatureFlag> updateFeatureFlags(String orgId, List<FeatureFlagDto> dtos) {
+    public List<FeatureFlagResponse> updateFeatureFlags(String orgId, List<FeatureFlagDto> dtos) {
         requireOrg(orgId);
-        List<FeatureFlag> result = new ArrayList<>();
+        List<FeatureFlagResponse> result = new ArrayList<>();
         for (FeatureFlagDto dto : dtos) {
             FeatureFlag flag = featureFlagRepository
                     .findByOrganisationIdAndFeatureKey(orgId, dto.featureKey())
@@ -424,7 +466,7 @@ public class SuperAdminService {
                             .featureKey(dto.featureKey())
                             .build());
             flag.setEnabled(dto.enabled());
-            result.add(featureFlagRepository.save(flag));
+            result.add(FeatureFlagResponse.from(featureFlagRepository.save(flag)));
         }
         return result;
     }
@@ -434,12 +476,14 @@ public class SuperAdminService {
     // =========================================================================
 
     @Transactional(readOnly = true)
-    public List<PlatformAnnouncement> getAnnouncements() {
-        return announcementRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public List<AnnouncementResponse> getAnnouncements() {
+        return announcementRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .map(AnnouncementResponse::from)
+                .toList();
     }
 
     @Transactional
-    public PlatformAnnouncement createAnnouncement(AnnouncementDto dto) {
+    public AnnouncementResponse createAnnouncement(AnnouncementDto dto) {
         PlatformAnnouncement.Severity severity = parseSeverity(dto.severity());
         PlatformAnnouncement announcement = PlatformAnnouncement.builder()
                 .title(dto.title())
@@ -448,11 +492,11 @@ public class SuperAdminService {
                 .active(dto.active())
                 .expiresAt(parseExpiresAt(dto.expiresAt()))
                 .build();
-        return announcementRepository.save(announcement);
+        return AnnouncementResponse.from(announcementRepository.save(announcement));
     }
 
     @Transactional
-    public PlatformAnnouncement updateAnnouncement(String id, AnnouncementDto dto) {
+    public AnnouncementResponse updateAnnouncement(String id, AnnouncementDto dto) {
         PlatformAnnouncement ann = announcementRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Annonce introuvable : " + id));
@@ -461,7 +505,7 @@ public class SuperAdminService {
         ann.setSeverity(parseSeverity(dto.severity()));
         ann.setActive(dto.active());
         ann.setExpiresAt(parseExpiresAt(dto.expiresAt()));
-        return announcementRepository.save(ann);
+        return AnnouncementResponse.from(announcementRepository.save(ann));
     }
 
     /** Parse an expiration date string — accepts both ISO datetime and plain date (YYYY-MM-DD). */
@@ -523,9 +567,124 @@ public class SuperAdminService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ImpersonationLog> getImpersonationLog(int page, int size) {
+    public Page<ImpersonationLogResponse> getImpersonationLog(int page, int size) {
         return impersonationLogRepository.findAllByOrderByStartedAtDesc(
-                PageRequest.of(page, size));
+                PageRequest.of(page, size))
+                .map(ImpersonationLogResponse::from);
+    }
+
+    // =========================================================================
+    // PLAN TEMPLATES
+    // =========================================================================
+
+    @Transactional(readOnly = true)
+    public List<PlanTemplateResponse> findAllPlanTemplates() {
+        return planTemplateRepository.findAllByOrderBySortOrderAsc()
+                .stream()
+                .map(PlanTemplateResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PlanTemplateResponse findPlanTemplate(String id) {
+        PlanTemplate template = requirePlanTemplate(id);
+        return PlanTemplateResponse.from(template);
+    }
+
+    @Transactional
+    public PlanTemplateResponse createPlanTemplate(PlanTemplateDto dto) {
+        String normalizedCode = dto.code().toUpperCase();
+        if (planTemplateRepository.existsByCode(normalizedCode)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un plan avec ce code existe déjà : " + normalizedCode);
+        }
+        PlanTemplate template = PlanTemplate.builder()
+                .code(normalizedCode)
+                .displayName(dto.displayName())
+                .description(dto.description())
+                .maxEmployees(dto.maxEmployees())
+                .maxSites(dto.maxSites())
+                .priceMonthly(dto.priceMonthly())
+                .priceAnnual(dto.priceAnnual())
+                .trialDays(dto.trialDays())
+                .active(dto.active())
+                .sortOrder(dto.sortOrder())
+                .features(dto.features() != null ? new HashMap<>(dto.features()) : new HashMap<>())
+                .build();
+        template = planTemplateRepository.save(template);
+        log.info("SuperAdmin: created plan template '{}' (code={})", template.getDisplayName(), template.getCode());
+        return PlanTemplateResponse.from(template);
+    }
+
+    @Transactional
+    public PlanTemplateResponse updatePlanTemplate(String id, PlanTemplateDto dto) {
+        PlanTemplate template = requirePlanTemplate(id);
+        String normalizedCode = dto.code().toUpperCase();
+
+        // Guard: code uniqueness, excluding the current entity
+        if (planTemplateRepository.existsByCodeAndIdNot(normalizedCode, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un autre plan utilise déjà ce code : " + normalizedCode);
+        }
+
+        template.setCode(normalizedCode);
+        template.setDisplayName(dto.displayName());
+        template.setDescription(dto.description());
+        template.setMaxEmployees(dto.maxEmployees());
+        template.setMaxSites(dto.maxSites());
+        template.setPriceMonthly(dto.priceMonthly());
+        template.setPriceAnnual(dto.priceAnnual());
+        template.setTrialDays(dto.trialDays());
+        template.setActive(dto.active());
+        template.setSortOrder(dto.sortOrder());
+
+        // Replace features map entirely — clear then put to avoid orphan rows
+        template.getFeatures().clear();
+        if (dto.features() != null) {
+            template.getFeatures().putAll(dto.features());
+        }
+
+        template = planTemplateRepository.save(template);
+        log.info("SuperAdmin: updated plan template '{}' (id={})", template.getCode(), id);
+        return PlanTemplateResponse.from(template);
+    }
+
+    @Transactional
+    public void deletePlanTemplate(String id) {
+        PlanTemplate template = requirePlanTemplate(id);
+
+        // Refuse deletion when at least one organisation currently uses this plan's code.
+        // Only the legacy PlanTier enum values (FREE, STARTER, PRO) can be mapped to
+        // subscriptions. CUSTOM or other codes have no matching enum value and can always
+        // be deleted safely.
+        Subscription.PlanTier matchingTier = resolvePlanTierOrNull(template.getCode());
+        if (matchingTier != null && !subscriptionRepository.findByPlanTier(matchingTier).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce plan est actuellement utilisé par une ou plusieurs organisations. "
+                    + "Désactivez-le plutôt que de le supprimer.");
+        }
+
+        planTemplateRepository.delete(template);
+        log.warn("SuperAdmin: DELETED plan template '{}' (id={})", template.getCode(), id);
+    }
+
+    private PlanTemplate requirePlanTemplate(String id) {
+        return planTemplateRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Plan template introuvable : " + id));
+    }
+
+    /**
+     * Attempts to resolve a PlanTemplate code to the legacy PlanTier enum.
+     * Returns null when the code has no corresponding enum value (e.g. CUSTOM plans).
+     * Used only for the "in-use" guard in deletePlanTemplate.
+     */
+    private Subscription.PlanTier resolvePlanTierOrNull(String code) {
+        try {
+            return Subscription.PlanTier.valueOf(code);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     // =========================================================================
@@ -584,8 +743,8 @@ public class SuperAdminService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Aucun administrateur trouvé pour cette organisation"));
 
-        String rawToken = generateSecureToken();
-        String hashedToken = com.schedy.util.CryptoUtil.sha256(rawToken);
+        String rawToken = CryptoUtil.generateSecureToken();
+        String hashedToken = CryptoUtil.sha256(rawToken);
         admin.setInvitationToken(hashedToken);
         admin.setInvitationTokenExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(invitationExpiryHours)));
         admin.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
@@ -602,19 +761,11 @@ public class SuperAdminService {
         }
     }
 
-    private String generateSecureToken() {
-        byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
-        StringBuilder sb = new StringBuilder(64);
-        for (byte b : bytes) sb.append(String.format("%02x", b));
-        return sb.toString();
-    }
-
+    /**
+     * Returns true if the organisation's country code corresponds to a French-speaking country.
+     * Delegates to {@link LocaleUtils#isFrenchSpeaking(String)} for the actual locale check.
+     */
     private boolean resolveIsFrench(Organisation org) {
-        String pays = org.getPays();
-        if (pays == null) return false;
-        String p = pays.toUpperCase();
-        return p.startsWith("FR") || "MDG".equals(p) || "MG".equals(p)
-                || "BE".equals(p) || "CH".equals(p) || "CA".equals(p) || "CAN".equals(p);
+        return LocaleUtils.isFrenchSpeaking(org.getPays());
     }
 }

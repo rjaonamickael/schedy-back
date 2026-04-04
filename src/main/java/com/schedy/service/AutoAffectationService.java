@@ -48,7 +48,8 @@ public class AutoAffectationService {
         List<Exigence> exigences = loadExigences(orgId, siteId);
         List<Employe> employes = loadEmployes(orgId, siteId);
         List<CreneauAssigne> creneauxExistants = loadCreneaux(orgId, semaine);
-        List<DemandeConge> congesApprouves = loadCongesApprouves(orgId);
+        LocalDate lundi = getLundiDeSemaine(semaine);
+        List<DemandeConge> congesApprouves = loadCongesApprouves(orgId, lundi);
         List<JourFerie> joursFeries = jourFerieRepository.findByOrganisationId(orgId);
         Parametres parametres = loadParametres(orgId, siteId);
 
@@ -68,7 +69,14 @@ public class AutoAffectationService {
                 parametres.getPlanningGranularite(),
                 parametres.getReglesAffectation(),
                 parametres.getHeuresMaxSemaine(),
-                getLundiDeSemaine(semaine),
+                parametres.getDureeMaxJour() != null ? parametres.getDureeMaxJour() : 10.0,
+                parametres.getReposMinEntreShifts() != null ? parametres.getReposMinEntreShifts() : 0.0,
+                parametres.getReposHebdoMin() != null ? parametres.getReposHebdoMin() : 0.0,
+                parametres.getMaxJoursConsecutifs() != null ? parametres.getMaxJoursConsecutifs() : 0,
+                parametres.getPauseFixeHeureDebut(),
+                parametres.getPauseFixeHeureFin(),
+                parametres.getPauseFixeJours() != null ? parametres.getPauseFixeJours() : List.of(),
+                lundi,
                 semaine,
                 siteId,
                 orgId
@@ -108,8 +116,18 @@ public class AutoAffectationService {
         return creneauRepository.findBySemaineAndOrganisationId(semaine, orgId);
     }
 
-    private List<DemandeConge> loadCongesApprouves(String orgId) {
-        return demandeCongeRepository.findByOrganisationIdAndStatut(orgId, StatutDemande.approuve);
+    /**
+     * Returns only the approved leaves that overlap with the target week,
+     * delegating the date-range filter to the database instead of loading
+     * the full organisation history and filtering in Java.
+     *
+     * Overlap condition: dateFin >= lundi AND dateDebut <= dimanche.
+     */
+    private List<DemandeConge> loadCongesApprouves(String orgId, LocalDate lundi) {
+        LocalDate dimanche = lundi.plusDays(6);
+        return demandeCongeRepository
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        orgId, StatutDemande.approuve, lundi, dimanche);
     }
 
     private Parametres loadParametres(String orgId, String siteId) {

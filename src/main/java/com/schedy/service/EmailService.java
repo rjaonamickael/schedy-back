@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,13 @@ public class EmailService {
 
     @Value("${brevo.api-key:}")
     private String brevoApiKey;
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .build();
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER =
+        new com.fasterxml.jackson.databind.ObjectMapper();
 
     private static final String CID_LOGO_IMG =
         "<img src=\"cid:schedy_logo\" alt=\"Schedy\" width=\"160\" "
@@ -96,17 +104,17 @@ public class EmailService {
                 "subject", subject,
                 "htmlContent", htmlWithUrl
             );
-            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
+            String json = OBJECT_MAPPER.writeValueAsString(payload);
 
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
                 .header("api-key", brevoApiKey)
                 .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 log.info("Email sent via Brevo API to {}", to);
             } else {
@@ -498,12 +506,8 @@ public class EmailService {
 
     private String build2faCodeHtml(String name, String code, String minutes) {
         String year = String.valueOf(java.time.Year.now().getValue());
-        // Format code with spaces: "123456" → "1 2 3 4 5 6"
-        StringBuilder spaced = new StringBuilder();
-        for (int i = 0; i < code.length(); i++) {
-            if (i > 0) spaced.append(" \u00a0 ");
-            spaced.append(code.charAt(i));
-        }
+        // Escape code for HTML (letter-spacing in CSS handles visual separation)
+        String safeCode = escapeHtml(code);
 
         return "<!DOCTYPE html>\n"
             + "<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\"/>\n"
@@ -531,8 +535,8 @@ public class EmailService {
             + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
             + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
             + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
-            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.3em;"
-            + "font-family:'Courier New',monospace;\">" + spaced + "</span>\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.4em;"
+            + "font-family:'Courier New',monospace;\">" + safeCode + "</span>\n"
             + "</div>\n"
             + "</td></tr></table>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
@@ -556,8 +560,8 @@ public class EmailService {
             + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
             + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
             + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
-            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.3em;"
-            + "font-family:'Courier New',monospace;\">" + spaced + "</span>\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.4em;"
+            + "font-family:'Courier New',monospace;\">" + safeCode + "</span>\n"
             + "</div>\n"
             + "</td></tr></table>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
@@ -684,6 +688,168 @@ public class EmailService {
             + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
             + "</td></tr></table></body></html>";
         sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    // ── Registration request notifications ─────────────────────────────────
+
+    /**
+     * Sent to the prospective organisation contact immediately after submission.
+     * Bilingual (FR primary, EN secondary) matching existing email style.
+     */
+    @Async
+    public void sendRegistrationRequestConfirmation(
+            String recipientEmail, String contactName, String orgName, boolean isFrench) {
+        String subject = "Demande d\u2019inscription Schedy re\u00e7ue \u2014 " + orgName
+                + " / Schedy registration request received \u2014 " + orgName;
+        String year = String.valueOf(java.time.Year.now().getValue());
+        String nameSafe = escapeHtml(contactName);
+        String orgSafe  = escapeHtml(orgName);
+
+        String html = buildEmailShell(year,
+            nameSafe + ", votre demande pour " + orgSafe + " a \u00e9t\u00e9 re\u00e7ue. / "
+            + "Your request for " + orgSafe + " has been received.")
+
+            // FR section
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">Votre demande a \u00e9t\u00e9 re\u00e7ue</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Bonjour " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Nous avons bien re\u00e7u votre demande d\u2019inscription pour l\u2019organisation "
+            + "<strong style=\"color:#047857;\">" + orgSafe + "</strong>.</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Notre \u00e9quipe va examiner votre dossier dans les <strong>2 \u00e0 5 jours ouvrables</strong>. "
+            + "Vous recevrez une r\u00e9ponse par email d\u00e8s qu\u2019une d\u00e9cision aura \u00e9t\u00e9 prise.</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Si vous avez des questions, contactez-nous \u00e0 "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            // EN section
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">Your request has been received</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Dear " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "We have received your registration request for <strong style=\"color:#047857;\">"
+            + orgSafe + "</strong>.</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Our team will review your application within <strong>2 to 5 business days</strong>. "
+            + "You will receive an email once a decision has been made.</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, reach us at "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    /**
+     * Sent to the prospective organisation contact when the superadmin rejects the request.
+     * Bilingual (FR primary, EN secondary).
+     */
+    @Async
+    public void sendRegistrationRequestRejection(
+            String recipientEmail, String contactName, String orgName,
+            String reason, boolean isFrench) {
+        String subject = "Votre demande d\u2019inscription Schedy \u2014 " + orgName
+                + " / Your Schedy registration request \u2014 " + orgName;
+        String year = String.valueOf(java.time.Year.now().getValue());
+        String nameSafe   = escapeHtml(contactName);
+        String orgSafe    = escapeHtml(orgName);
+        String reasonSafe = escapeHtml(reason);
+
+        String html = buildEmailShell(year,
+            nameSafe + ", suite donn\u00e9e \u00e0 votre demande pour " + orgSafe + ". / "
+            + "Follow-up on your request for " + orgSafe + ".")
+
+            // FR section
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#1F2937;\">Suite donn\u00e9e \u00e0 votre demande</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Bonjour " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Nous avons examin\u00e9 votre demande d\u2019inscription pour l\u2019organisation "
+            + "<strong>" + orgSafe + "</strong>. "
+            + "Nous ne sommes malheureusement pas en mesure de donner suite \u00e0 votre candidature \u00e0 ce stade.</p>\n"
+            + "<p style=\"margin:0 0 4px;font-size:14px;font-weight:700;color:#1F2937;\">Motif communiqu\u00e9\u00a0:</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:14px;color:#4B5563;background:#F3F4F6;"
+            + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
+            + reasonSafe + "</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Pour toute question, contactez-nous \u00e0 "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            // EN section
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#1F2937;\">Follow-up on your registration request</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Dear " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "We have reviewed your registration request for <strong>" + orgSafe + "</strong>. "
+            + "Unfortunately, we are unable to move forward with your application at this time.</p>\n"
+            + "<p style=\"margin:0 0 4px;font-size:14px;font-weight:700;color:#1F2937;\">Reason provided:</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:14px;color:#4B5563;background:#F3F4F6;"
+            + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
+            + reasonSafe + "</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, please contact us at "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    /**
+     * Shared HTML shell: DOCTYPE + body open + gradient bar + logo + preheader.
+     * Mirrors the structure used by all other email builders in this service.
+     */
+    private String buildEmailShell(String year, String preheaderText) {
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + escapeHtml(preheaderText)
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n";
+    }
+
+    /**
+     * Shared footer row matching existing email templates.
+     * Caller appends this then closes the table and body.
+     */
+    private String buildEmailFooter(String year) {
+        return "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
     }
 
     private String escapeHtml(String input) {

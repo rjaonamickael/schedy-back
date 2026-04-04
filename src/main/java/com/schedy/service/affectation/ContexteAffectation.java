@@ -21,6 +21,19 @@ public record ContexteAffectation(
         double granularite,
         List<String> regles,
         double heuresMaxSemaine,
+        double dureeMaxJour,
+        /** Minimum rest between two shifts in hours. 0 = disabled. */
+        double reposMinEntreShifts,
+        /** Minimum weekly rest in hours. 0 = disabled. */
+        double reposHebdoMin,
+        /** Maximum consecutive working days. 0 = disabled. */
+        int maxJoursConsecutifs,
+        /** Fixed collective break window start hour. Null/0 = disabled. */
+        Double pauseFixeHeureDebut,
+        /** Fixed collective break window end hour. Null/0 = disabled. */
+        Double pauseFixeHeureFin,
+        /** Days when the fixed break applies (0=Mon..6=Sun). Empty = disabled. */
+        List<Integer> pauseFixeJours,
         LocalDate lundi,
         String semaine,
         String siteId,

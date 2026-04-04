@@ -1,5 +1,6 @@
 package com.schedy.util;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -31,8 +32,13 @@ public class TotpEncryptionUtil {
     private static final String ALGORITHM     = "AES/GCM/NoPadding";
     private static final int    GCM_IV_LENGTH = 12;  // bytes — 96-bit nonce recommended for GCM
     private static final int    GCM_TAG_BITS  = 128; // authentication tag length
+    private static final String DEV_KEY_DEFAULT = "c2NoZWR5LWRldi10b3RwLWtleS0zMmJ5dGVzISEhISE=";
 
     private final SecretKey secretKey;
+    private final String    rawBase64Key;
+
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
 
     public TotpEncryptionUtil(
             @Value("${schedy.totp.encryption-key:c2NoZWR5LWRldi10b3RwLWtleS0zMmJ5dGVzISEhISE=}") String base64Key) {
@@ -43,8 +49,26 @@ public class TotpEncryptionUtil {
                 "Got " + keyBytes.length + " bytes. " +
                 "Generate with: openssl rand -base64 32");
         }
-        this.secretKey = new SecretKeySpec(keyBytes, "AES");
+        this.secretKey    = new SecretKeySpec(keyBytes, "AES");
+        this.rawBase64Key = base64Key;
         log.info("TotpEncryptionUtil initialised with AES-256-GCM");
+    }
+
+    @PostConstruct
+    public void validateKeyForProfile() {
+        boolean usingDevKey = DEV_KEY_DEFAULT.equals(rawBase64Key);
+        if (!usingDevKey) {
+            return;
+        }
+        if ("dev".equals(activeProfile)) {
+            log.warn("**SECURITY WARNING** schedy.totp.encryption-key is using the compiled-in dev " +
+                     "default. Set TOTP_ENCRYPTION_KEY environment variable before deploying to production.");
+        } else {
+            throw new IllegalStateException(
+                "TOTP encryption key must be set in production. " +
+                "Set TOTP_ENCRYPTION_KEY environment variable. " +
+                "Generate with: openssl rand -base64 32");
+        }
     }
 
     /**

@@ -418,4 +418,50 @@ class EmployeServiceTest {
             assertThat(hash).isEqualTo("03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4");
         }
     }
+
+    // ── C-06 — toResponseWithUser ──
+
+    @Nested
+    @DisplayName("toResponseWithUser()")
+    class ToResponseWithUser {
+
+        @Test
+        @DisplayName("returns correct systemRole when User exists")
+        void withLinkedUser_populatesSystemRole() {
+            Employe emp = Employe.builder()
+                    .id(EMPLOYE_ID).nom("Alice").role("employe")
+                    .organisationId(ORG_ID)
+                    .disponibilites(new java.util.ArrayList<>())
+                    .siteIds(new java.util.ArrayList<>())
+                    .build();
+            com.schedy.entity.User user = com.schedy.entity.User.builder()
+                    .id(1L).email("alice@example.com").password("x")
+                    .role(com.schedy.entity.User.UserRole.MANAGER)
+                    .employeId(EMPLOYE_ID).organisationId(ORG_ID)
+                    .build();
+            when(userRepository.findByEmployeId(EMPLOYE_ID)).thenReturn(Optional.of(user));
+
+            com.schedy.dto.response.EmployeResponse result = employeService.toResponseWithUser(emp);
+
+            assertThat(result.hasUserAccount()).isTrue();
+            assertThat(result.systemRole()).isEqualTo("MANAGER");
+        }
+
+        @Test
+        @DisplayName("returns hasUserAccount=false when no User linked")
+        void noLinkedUser_hasUserAccountFalse() {
+            Employe emp = Employe.builder()
+                    .id(EMPLOYE_ID).nom("Bob").role("employe")
+                    .organisationId(ORG_ID)
+                    .disponibilites(new java.util.ArrayList<>())
+                    .siteIds(new java.util.ArrayList<>())
+                    .build();
+            when(userRepository.findByEmployeId(EMPLOYE_ID)).thenReturn(Optional.empty());
+
+            com.schedy.dto.response.EmployeResponse result = employeService.toResponseWithUser(emp);
+
+            assertThat(result.hasUserAccount()).isFalse();
+            assertThat(result.systemRole()).isNull();
+        }
+    }
 }

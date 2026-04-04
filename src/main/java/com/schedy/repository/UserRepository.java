@@ -22,6 +22,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u.organisationId, COUNT(u) FROM User u WHERE u.organisationId IN :orgIds GROUP BY u.organisationId")
     List<Object[]> countGroupedByOrganisationId(@Param("orgIds") Collection<String> orgIds);
 
+    List<User> findByOrganisationIdAndRoleIn(String organisationId, List<User.UserRole> roles);
     Optional<User> findFirstByOrganisationIdAndRole(String organisationId, User.UserRole role);
     Optional<User> findByInvitationToken(String invitationToken);
     Optional<User> findByPasswordResetToken(String passwordResetToken);

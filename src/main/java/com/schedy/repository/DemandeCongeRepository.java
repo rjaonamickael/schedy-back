@@ -32,6 +32,13 @@ public interface DemandeCongeRepository extends JpaRepository<DemandeConge, Stri
     void deleteByTypeCongeIdAndOrganisationId(String typeCongeId, String organisationId);
     List<DemandeConge> findByOrganisationIdAndStatut(String organisationId, StatutDemande statut);
 
+    /**
+     * Returns approved leaves that overlap with the given date range [dateDebutMax, dateFinMin].
+     * A leave overlaps the target week when its end date >= week start AND its start date <= week end.
+     */
+    List<DemandeConge> findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+            String organisationId, StatutDemande statut, LocalDate dateFinMin, LocalDate dateDebutMax);
+
     /** Count pending leave requests for a given employee. */
     long countByEmployeIdAndOrganisationIdAndStatut(String employeId, String organisationId, StatutDemande statut);
 

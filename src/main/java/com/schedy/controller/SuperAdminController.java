@@ -1,10 +1,17 @@
 package com.schedy.controller;
 
 import com.schedy.dto.request.*;
+import com.schedy.dto.response.AnnouncementResponse;
+import com.schedy.dto.response.FeatureFlagResponse;
 import com.schedy.dto.response.ImpersonateResponse;
+import com.schedy.dto.response.ImpersonationLogResponse;
 import com.schedy.dto.response.OrgSummaryResponse;
+import com.schedy.dto.response.PlanTemplateResponse;
+import com.schedy.dto.response.PromoCodeResponse;
+import com.schedy.dto.response.RegistrationRequestResponse;
+import com.schedy.dto.response.SubscriptionResponse;
 import com.schedy.dto.response.SuperAdminDashboardResponse;
-import com.schedy.entity.*;
+import com.schedy.service.RegistrationRequestService;
 import com.schedy.service.SuperAdminService;
 import com.schedy.service.TotpService;
 import com.schedy.util.IpUtils;
@@ -30,8 +37,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class SuperAdminController {
 
-    private final SuperAdminService superAdminService;
-    private final TotpService totpService;
+    private final SuperAdminService             superAdminService;
+    private final TotpService                   totpService;
+    private final RegistrationRequestService    registrationRequestService;
 
     @org.springframework.beans.factory.annotation.Value("${schedy.rate-limit.trusted-proxies:127.0.0.1,::1,0:0:0:0:0:0:0:1}")
     private List<String> trustedProxiesList;
@@ -120,19 +128,19 @@ public class SuperAdminController {
     // =========================================================================
 
     @GetMapping("/organisations/{id}/subscription")
-    public ResponseEntity<Subscription> getSubscription(@PathVariable String id) {
+    public ResponseEntity<SubscriptionResponse> getSubscription(@PathVariable String id) {
         return ResponseEntity.ok(superAdminService.getSubscription(id));
     }
 
     @PutMapping("/organisations/{id}/subscription")
-    public ResponseEntity<Subscription> updateSubscription(
+    public ResponseEntity<SubscriptionResponse> updateSubscription(
             @PathVariable String id,
             @RequestBody SubscriptionDto dto) {
         return ResponseEntity.ok(superAdminService.updateSubscription(id, dto));
     }
 
     @PostMapping("/organisations/{id}/apply-promo")
-    public ResponseEntity<Subscription> applyPromoCode(
+    public ResponseEntity<SubscriptionResponse> applyPromoCode(
             @PathVariable String id,
             @Valid @RequestBody ApplyPromoRequest request) {
         return ResponseEntity.ok(superAdminService.applyPromoCode(id, request.promoCode()));
@@ -143,18 +151,18 @@ public class SuperAdminController {
     // =========================================================================
 
     @GetMapping("/promo-codes")
-    public ResponseEntity<List<PromoCode>> findAllPromoCodes() {
+    public ResponseEntity<List<PromoCodeResponse>> findAllPromoCodes() {
         return ResponseEntity.ok(superAdminService.findAllPromoCodes());
     }
 
     @PostMapping("/promo-codes")
-    public ResponseEntity<PromoCode> createPromoCode(@Valid @RequestBody PromoCodeDto dto) {
+    public ResponseEntity<PromoCodeResponse> createPromoCode(@Valid @RequestBody PromoCodeDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(superAdminService.createPromoCode(dto));
     }
 
     @PutMapping("/promo-codes/{id}")
-    public ResponseEntity<PromoCode> updatePromoCode(
+    public ResponseEntity<PromoCodeResponse> updatePromoCode(
             @PathVariable String id,
             @Valid @RequestBody PromoCodeDto dto) {
         return ResponseEntity.ok(superAdminService.updatePromoCode(id, dto));
@@ -171,12 +179,12 @@ public class SuperAdminController {
     // =========================================================================
 
     @GetMapping("/organisations/{id}/features")
-    public ResponseEntity<List<FeatureFlag>> getFeatureFlags(@PathVariable String id) {
+    public ResponseEntity<List<FeatureFlagResponse>> getFeatureFlags(@PathVariable String id) {
         return ResponseEntity.ok(superAdminService.getFeatureFlags(id));
     }
 
     @PutMapping("/organisations/{id}/features")
-    public ResponseEntity<List<FeatureFlag>> updateFeatureFlags(
+    public ResponseEntity<List<FeatureFlagResponse>> updateFeatureFlags(
             @PathVariable String id,
             @RequestBody List<FeatureFlagDto> flags) {
         return ResponseEntity.ok(superAdminService.updateFeatureFlags(id, flags));
@@ -193,8 +201,23 @@ public class SuperAdminController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
 
+        String totpCode = request != null ? request.totpCode() : null;
+        if (totpCode == null || totpCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Le code 2FA est obligatoire pour effectuer une impersonation.");
+        }
+        TotpService.TwoFaStatusResponse status = totpService.getStatus();
+        if (!status.enabled()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "La double authentification doit être activée pour effectuer une impersonation.");
+        }
         String superadminEmail = authentication.getName();
-        String reason = request != null ? request.reason() : null;
+        if (!totpService.verify(superadminEmail, totpCode)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Code 2FA invalide ou expiré.");
+        }
+
+        String reason = request.reason();
         String ipAddress = extractClientIp(httpRequest);
 
         return ResponseEntity.ok(
@@ -202,7 +225,7 @@ public class SuperAdminController {
     }
 
     @GetMapping("/impersonation-log")
-    public ResponseEntity<Page<ImpersonationLog>> getImpersonationLog(
+    public ResponseEntity<Page<ImpersonationLogResponse>> getImpersonationLog(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(superAdminService.getImpersonationLog(page, size));
@@ -213,19 +236,19 @@ public class SuperAdminController {
     // =========================================================================
 
     @GetMapping("/announcements")
-    public ResponseEntity<List<PlatformAnnouncement>> getAnnouncements() {
+    public ResponseEntity<List<AnnouncementResponse>> getAnnouncements() {
         return ResponseEntity.ok(superAdminService.getAnnouncements());
     }
 
     @PostMapping("/announcements")
-    public ResponseEntity<PlatformAnnouncement> createAnnouncement(
+    public ResponseEntity<AnnouncementResponse> createAnnouncement(
             @Valid @RequestBody AnnouncementDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(superAdminService.createAnnouncement(dto));
     }
 
     @PutMapping("/announcements/{id}")
-    public ResponseEntity<PlatformAnnouncement> updateAnnouncement(
+    public ResponseEntity<AnnouncementResponse> updateAnnouncement(
             @PathVariable String id,
             @Valid @RequestBody AnnouncementDto dto) {
         return ResponseEntity.ok(superAdminService.updateAnnouncement(id, dto));
@@ -234,6 +257,98 @@ public class SuperAdminController {
     @DeleteMapping("/announcements/{id}")
     public ResponseEntity<Void> deleteAnnouncement(@PathVariable String id) {
         superAdminService.deleteAnnouncement(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // REGISTRATION REQUESTS
+    // =========================================================================
+
+    /**
+     * GET /api/v1/superadmin/registration-requests?status=PENDING
+     * List all registration requests, optionally filtered by status.
+     */
+    @GetMapping("/registration-requests")
+    public ResponseEntity<List<RegistrationRequestResponse>> findAllRegistrationRequests(
+            @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(registrationRequestService.findAll(status));
+    }
+
+    /**
+     * GET /api/v1/superadmin/registration-requests/{id}
+     * Get details of a single registration request.
+     */
+    @GetMapping("/registration-requests/{id}")
+    public ResponseEntity<RegistrationRequestResponse> findRegistrationRequest(
+            @PathVariable String id) {
+        return ResponseEntity.ok(registrationRequestService.findById(id));
+    }
+
+    /**
+     * POST /api/v1/superadmin/registration-requests/{id}/approve
+     * Approve the request: create org + send invitation email.
+     */
+    @PostMapping("/registration-requests/{id}/approve")
+    public ResponseEntity<RegistrationRequestResponse> approveRegistrationRequest(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication authentication) {
+        String superadminEmail = authentication.getName();
+        String planTier = (body != null && body.containsKey("planTier")) ? body.get("planTier") : null;
+        String adminEmail = (body != null && body.containsKey("adminEmail")) ? body.get("adminEmail") : null;
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(registrationRequestService.approve(id, superadminEmail, planTier, adminEmail));
+    }
+
+    /**
+     * POST /api/v1/superadmin/registration-requests/{id}/reject
+     * Reject the request with a mandatory reason + send rejection email.
+     */
+    @PostMapping("/registration-requests/{id}/reject")
+    public ResponseEntity<RegistrationRequestResponse> rejectRegistrationRequest(
+            @PathVariable String id,
+            @Valid @RequestBody RejectRegistrationRequest request,
+            Authentication authentication) {
+        String superadminEmail = authentication.getName();
+        return ResponseEntity.ok(
+                registrationRequestService.reject(id, request.reason(), superadminEmail));
+    }
+
+    // =========================================================================
+    // PLAN TEMPLATES
+    // =========================================================================
+
+    @GetMapping("/plan-templates")
+    public ResponseEntity<List<PlanTemplateResponse>> findAllPlanTemplates() {
+        return ResponseEntity.ok(superAdminService.findAllPlanTemplates());
+    }
+
+    @GetMapping("/plan-templates/{id}")
+    public ResponseEntity<PlanTemplateResponse> findPlanTemplate(@PathVariable String id) {
+        return ResponseEntity.ok(superAdminService.findPlanTemplate(id));
+    }
+
+    @PostMapping("/plan-templates")
+    public ResponseEntity<PlanTemplateResponse> createPlanTemplate(
+            @Valid @RequestBody PlanTemplateDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(superAdminService.createPlanTemplate(dto));
+    }
+
+    @PutMapping("/plan-templates/{id}")
+    public ResponseEntity<PlanTemplateResponse> updatePlanTemplate(
+            @PathVariable String id,
+            @Valid @RequestBody PlanTemplateDto dto) {
+        return ResponseEntity.ok(superAdminService.updatePlanTemplate(id, dto));
+    }
+
+    /**
+     * DELETE /api/v1/superadmin/plan-templates/{id}
+     * Returns 409 Conflict when any organisation is still subscribed to this plan.
+     */
+    @DeleteMapping("/plan-templates/{id}")
+    public ResponseEntity<Void> deletePlanTemplate(@PathVariable String id) {
+        superAdminService.deletePlanTemplate(id);
         return ResponseEntity.noContent().build();
     }
 

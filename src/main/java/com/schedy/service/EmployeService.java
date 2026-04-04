@@ -20,6 +20,8 @@ import com.schedy.repository.PointageRepository;
 import com.schedy.repository.SiteRepository;
 import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.util.CryptoUtil;
+import com.schedy.util.LocaleUtils;
 import com.schedy.util.TotpEncryptionUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -156,7 +158,7 @@ public class EmployeService {
         // Create a User account for any employee who has an email address
         if (dto.email() != null && !dto.email().isBlank()) {
             if (!userRepository.existsByEmail(dto.email())) {
-                String rawToken = generateSecureToken();
+                String rawToken = CryptoUtil.generateSecureToken();
                 String hashedToken = sha256(rawToken);
                 User newUser = User.builder()
                         .email(dto.email())
@@ -202,8 +204,14 @@ public class EmployeService {
         employe.setRole(dto.role());
         employe.setTelephone(dto.telephone());
         employe.setEmail(dto.email());
-        employe.setDateNaissance(dto.dateNaissance());
-        employe.setDateEmbauche(dto.dateEmbauche());
+        // Fix CODE-01: guard nullable date fields — do not overwrite existing
+        // values with null on partial updates (would break anciennete/age rules)
+        if (dto.dateNaissance() != null) {
+            employe.setDateNaissance(dto.dateNaissance());
+        }
+        if (dto.dateEmbauche() != null) {
+            employe.setDateEmbauche(dto.dateEmbauche());
+        }
         if (dto.pin() != null && !dto.pin().isBlank()) {
             employe.setPin(passwordEncoder.encode(dto.pin()));
             employe.setPinHash(sha256(dto.pin()));
@@ -338,6 +346,22 @@ public class EmployeService {
     }
 
     /**
+     * Returns an {@link com.schedy.dto.response.EmployeResponse} for a single employee
+     * with the linked {@link User} account populated (systemRole, hasUserAccount,
+     * invitationPending).  Used by GET /{id}, POST, and PUT /{id} so that the
+     * frontend always receives accurate role-badge data for single-employee responses.
+     *
+     * @param employe the already-loaded/saved Employe entity
+     * @return EmployeResponse with User data if a linked account exists, otherwise with
+     *         systemRole=null and hasUserAccount=false
+     */
+    @Transactional(readOnly = true)
+    public com.schedy.dto.response.EmployeResponse toResponseWithUser(Employe employe) {
+        User linkedUser = userRepository.findByEmployeId(employe.getId()).orElse(null);
+        return com.schedy.dto.response.EmployeResponse.from(employe, linkedUser);
+    }
+
+    /**
      * Returns a map of employeId -> User for all users in the current org.
      * Used for batch-loading user accounts when building lists of EmployeResponse.
      */
@@ -411,7 +435,7 @@ public class EmployeService {
                 }
 
                 // Generate invitation token
-                String rawToken = generateSecureToken();
+                String rawToken = CryptoUtil.generateSecureToken();
                 String hashedToken = sha256(rawToken);
 
                 // Create user with unusable password
@@ -470,7 +494,7 @@ public class EmployeService {
             throw new BusinessRuleException("L'employe doit avoir une adresse email.");
         }
 
-        String rawToken = generateSecureToken();
+        String rawToken = CryptoUtil.generateSecureToken();
         String hashedToken = sha256(rawToken);
 
         user.setInvitationToken(hashedToken);
@@ -488,32 +512,13 @@ public class EmployeService {
     }
 
     /**
-     * Generates a cryptographically secure random token (32 bytes, hex-encoded = 64 chars).
-     */
-    private String generateSecureToken() {
-        byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
-        StringBuilder hex = new StringBuilder(64);
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
-    }
-
-    /**
      * Determines if the organisation's primary language is French,
      * based on the pays (ISO alpha-2/3) code.
+     * Delegates to {@link LocaleUtils#isFrenchSpeaking(String)} for the actual locale check.
      */
     private boolean resolveIsFrench(String orgId) {
         return organisationRepository.findById(orgId)
-                .map(org -> {
-                    String pays = org.getPays();
-                    if (pays == null) return false;
-                    String p = pays.toUpperCase();
-                    return p.startsWith("FR") || "MDG".equals(p) || "MG".equals(p)
-                            || "BE".equals(p) || "CH".equals(p) || "CA".equals(p)
-                            || "SN".equals(p) || "CI".equals(p) || "CM".equals(p);
-                })
+                .map(org -> LocaleUtils.isFrenchSpeaking(org.getPays()))
                 .orElse(false);
     }
 

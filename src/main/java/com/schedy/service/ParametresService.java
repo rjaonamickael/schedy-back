@@ -89,6 +89,53 @@ public class ParametresService {
         if (dto.delaiSignalementAbsenceMinutes() != null) {
             parametres.setDelaiSignalementAbsenceMinutes(dto.delaiSignalementAbsenceMinutes());
         }
+        if (dto.seuilAbsenceVsCongeHeures() != null) {
+            parametres.setSeuilAbsenceVsCongeHeures(dto.seuilAbsenceVsCongeHeures());
+        }
+
+        // Labor law constraints
+        if (dto.reposMinEntreShifts() != null) parametres.setReposMinEntreShifts(dto.reposMinEntreShifts());
+        if (dto.reposHebdoMin() != null) parametres.setReposHebdoMin(dto.reposHebdoMin());
+        if (dto.maxJoursConsecutifs() != null) parametres.setMaxJoursConsecutifs(dto.maxJoursConsecutifs());
+
+        // Pause Layer 1: fixed collective
+        if (dto.pauseFixeHeureDebut() != null) parametres.setPauseFixeHeureDebut(dto.pauseFixeHeureDebut());
+        if (dto.pauseFixeHeureFin() != null) parametres.setPauseFixeHeureFin(dto.pauseFixeHeureFin());
+        if (dto.pauseFixeJours() != null) parametres.setPauseFixeJours(new java.util.ArrayList<>(dto.pauseFixeJours()));
+
+        // Pause Layer 2: tiered rules
+        if (dto.pauseAvancee() != null) parametres.setPauseAvancee(dto.pauseAvancee());
+        if (dto.pauseSeuilHeures() != null) parametres.setPauseSeuilHeures(dto.pauseSeuilHeures());
+        if (dto.pauseDureeMinutes() != null) parametres.setPauseDureeMinutes(dto.pauseDureeMinutes());
+        if (dto.pausePayee() != null) parametres.setPausePayee(dto.pausePayee());
+        if (dto.reglesPause() != null) {
+            // W4: validate no duplicate rules at the same tier (seuilMin + type)
+            validateReglesPause(dto.reglesPause());
+            parametres.getReglesPause().clear();
+            parametres.getReglesPause().addAll(dto.reglesPause());
+        }
+
+        // Pause Layer 3: detection window
+        if (dto.fenetrePauseMinMinutes() != null) parametres.setFenetrePauseMinMinutes(dto.fenetrePauseMinMinutes());
+        if (dto.fenetrePauseMaxMinutes() != null) parametres.setFenetrePauseMaxMinutes(dto.fenetrePauseMaxMinutes());
+        if (dto.pauseRenoncementAutorise() != null) parametres.setPauseRenoncementAutorise(dto.pauseRenoncementAutorise());
+    }
+
+    /**
+     * Validates that no two break rules share the same (seuilMinHeures, type) combination,
+     * which would cause double-counting in BreakCalculator. Throws BusinessRuleException if invalid.
+     */
+    private void validateReglesPause(java.util.List<com.schedy.entity.ReglePause> regles) {
+        var seen = new java.util.HashSet<String>();
+        for (var r : regles) {
+            String key = r.getSeuilMinHeures() + "|" + r.getType();
+            if (!seen.add(key)) {
+                throw new com.schedy.exception.BusinessRuleException(
+                        "Duplicate break rule: two rules of type " + r.getType()
+                        + " at the same threshold " + r.getSeuilMinHeures() + "h. "
+                        + "Each tier should have at most one rule per type.");
+            }
+        }
     }
 
     /**

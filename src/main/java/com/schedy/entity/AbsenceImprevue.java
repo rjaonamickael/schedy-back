@@ -24,6 +24,9 @@ public class AbsenceImprevue {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Version
+    private Long version;
+
     @NotBlank
     @Column(name = "employe_id", nullable = false)
     private String employeId;

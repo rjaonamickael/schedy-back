@@ -384,12 +384,12 @@ public class AbsenceImprevueService {
                 .orElseGet(() -> Parametres.builder().build());
     }
 
+    private static final List<User.UserRole> MANAGER_ROLES =
+            List.of(User.UserRole.MANAGER, User.UserRole.ADMIN);
+
     private void notifyManagers(AbsenceImprevue absence, String orgId, String employeNom) {
         try {
-            List<User> managers = userRepo.findAllByOrganisationId(orgId).stream()
-                    .filter(u -> u.getRole() == User.UserRole.MANAGER
-                            || u.getRole() == User.UserRole.ADMIN)
-                    .toList();
+            List<User> managers = userRepo.findByOrganisationIdAndRoleIn(orgId, MANAGER_ROLES);
 
             for (User manager : managers) {
                 emailService.sendAbsenceSignaleeEmail(
@@ -406,10 +406,7 @@ public class AbsenceImprevueService {
             Employe employe = employeRepo.findByIdAndOrganisationId(absence.getEmployeId(), orgId).orElse(null);
             String nom = employe != null ? employe.getNom() : absence.getEmployeId();
 
-            List<User> managers = userRepo.findAllByOrganisationId(orgId).stream()
-                    .filter(u -> u.getRole() == User.UserRole.MANAGER
-                            || u.getRole() == User.UserRole.ADMIN)
-                    .toList();
+            List<User> managers = userRepo.findByOrganisationIdAndRoleIn(orgId, MANAGER_ROLES);
 
             for (User manager : managers) {
                 emailService.sendAbsenceAnnuleeEmail(

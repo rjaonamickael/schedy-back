@@ -2,6 +2,7 @@ package com.schedy.repository;
 
 import com.schedy.entity.Subscription;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -15,4 +16,10 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Stri
     List<Subscription> findByStatus(Subscription.SubscriptionStatus status);
     List<Subscription> findByPlanTier(Subscription.PlanTier planTier);
     void deleteByOrganisationId(String organisationId);
+
+    @Query("SELECT s.planTier, COUNT(s) FROM Subscription s GROUP BY s.planTier")
+    List<Object[]> countByPlanTierGrouped();
+
+    @Query("SELECT s.status, COUNT(s) FROM Subscription s GROUP BY s.status")
+    List<Object[]> countByStatusGrouped();
 }

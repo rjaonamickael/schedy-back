@@ -46,10 +46,10 @@ public class EmployeController {
         Map<String, User> userMap = employeService.findAllUserMapByOrg();
         Page<EmployeResponse> page;
         if (siteId != null) {
-            page = employeService.findBySiteId(siteId, PageRequest.of(0, 1000))
+            page = employeService.findBySiteId(siteId, PageRequest.of(0, 5000))
                     .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         } else {
-            page = employeService.findAll(PageRequest.of(0, 1000))
+            page = employeService.findAll(PageRequest.of(0, 5000))
                     .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         }
         return ResponseEntity.ok()
@@ -59,7 +59,7 @@ public class EmployeController {
 
     @GetMapping("/{id}")
     public ResponseEntity<EmployeResponse> findById(@PathVariable String id) {
-        return ResponseEntity.ok(EmployeResponse.from(employeService.findById(id)));
+        return ResponseEntity.ok(employeService.toResponseWithUser(employeService.findById(id)));
     }
 
     /**
@@ -112,13 +112,14 @@ public class EmployeController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<EmployeResponse> create(@Valid @RequestBody EmployeDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(EmployeResponse.from(employeService.create(dto)));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(employeService.toResponseWithUser(employeService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<EmployeResponse> update(@PathVariable String id, @Valid @RequestBody EmployeDto dto) {
-        return ResponseEntity.ok(EmployeResponse.from(employeService.update(id, dto)));
+        return ResponseEntity.ok(employeService.toResponseWithUser(employeService.update(id, dto)));
     }
 
     /**

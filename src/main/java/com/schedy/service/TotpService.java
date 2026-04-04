@@ -20,9 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 /**
  * Handles all server-side logic for TOTP-based Two-Factor Authentication.
@@ -54,8 +57,11 @@ public class TotpService {
     private final TotpRecoveryCodeRepository    recoveryCodeRepository;
     private final TotpEncryptionUtil            encryptionUtil;
 
-    /** Per-email 2FA attempt tracker (in-memory, beta-grade). */
-    private final Map<String, TwoFaAttemptTracker> twoFaAttempts = new ConcurrentHashMap<>();
+    /** Per-email 2FA attempt tracker — Caffeine cache with auto-eviction. */
+    private final Cache<String, TwoFaAttemptTracker> twoFaAttempts = Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofMinutes(15))
+            .build();
 
     private record TwoFaAttemptTracker(int attempts, Instant firstAttempt, Instant lockedUntil) {
         boolean isLocked() {
@@ -282,12 +288,16 @@ public class TotpService {
     }
 
     /**
-     * Returns whether 2FA is enabled for the currently authenticated user.
+     * Returns whether 2FA is enabled for the currently authenticated user,
+     * along with how many recovery codes they still have available.
      */
     @Transactional(readOnly = true)
     public TwoFaStatusResponse getStatus() {
         User user = currentUser();
-        return new TwoFaStatusResponse(user.isTotpEnabled());
+        int remaining = user.isTotpEnabled()
+                ? (int) recoveryCodeRepository.countByUserIdAndUsedFalse(user.getId())
+                : 0;
+        return new TwoFaStatusResponse(user.isTotpEnabled(), remaining);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -360,7 +370,7 @@ public class TotpService {
 
     /** Throws 429 if the account is currently locked due to too many 2FA failures. */
     private void checkRateLimit(String email) {
-        TwoFaAttemptTracker tracker = twoFaAttempts.get(email);
+        TwoFaAttemptTracker tracker = twoFaAttempts.getIfPresent(email);
         if (tracker != null && tracker.isLocked()) {
             log.warn("2FA rate limit exceeded for: {}", email);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
@@ -369,7 +379,7 @@ public class TotpService {
     }
 
     private void recordFailedAttempt(String email) {
-        twoFaAttempts.compute(email, (key, existing) -> {
+        twoFaAttempts.asMap().compute(email, (key, existing) -> {
             Instant now = Instant.now();
             if (existing == null ||
                     now.toEpochMilli() - existing.firstAttempt().toEpochMilli() > LOCKOUT_DURATION_MS) {
@@ -386,7 +396,7 @@ public class TotpService {
     }
 
     private void clearAttempts(String email) {
-        twoFaAttempts.remove(email);
+        twoFaAttempts.invalidate(email);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -405,6 +415,7 @@ public class TotpService {
     ) {}
 
     public record TwoFaStatusResponse(
-            boolean enabled
+            boolean enabled,
+            int recoveryCodesRemaining
     ) {}
 }

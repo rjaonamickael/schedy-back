@@ -20,6 +20,7 @@ import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
+import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,7 +36,9 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 @Slf4j
 @Service
@@ -64,7 +67,10 @@ public class AuthService {
     // its own failed attempts independently, so an attacker can bypass lockout by cycling between
     // instances. A proper fix requires a distributed store (e.g., Redis with SETNX + TTL).
     // Accepted as-is for beta (single-instance). Must be replaced before scaling to multiple pods.
-    private final Map<String, FailedLoginTracker> failedLogins = new ConcurrentHashMap<>();
+    private final Cache<String, FailedLoginTracker> failedLogins = Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofMinutes(15))
+            .build();
 
     private record FailedLoginTracker(int attempts, Instant firstAttempt, Instant lockedUntil) {
         boolean isLocked() {
@@ -120,7 +126,7 @@ public class AuthService {
         String email = request.email().toLowerCase().trim();
 
         // B-H16: Check per-account lockout before attempting authentication
-        FailedLoginTracker tracker = failedLogins.get(email);
+        FailedLoginTracker tracker = failedLogins.getIfPresent(email);
         if (tracker != null && tracker.isLocked()) {
             log.warn("Locked account login attempt: {}", email);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
@@ -146,7 +152,7 @@ public class AuthService {
         }
 
         // Successful password verification: clear failed attempts
-        failedLogins.remove(email);
+        failedLogins.invalidate(email);
 
         // If 2FA is enabled, issue a short-lived pending token and send email code.
         if (user.isTotpEnabled()) {
@@ -190,7 +196,7 @@ public class AuthService {
     }
 
     private void recordFailedAttempt(String email) {
-        failedLogins.compute(email, (key, existing) -> {
+        failedLogins.asMap().compute(email, (key, existing) -> {
             Instant now = Instant.now();
             if (existing == null || now.toEpochMilli() - existing.firstAttempt().toEpochMilli() > LOCKOUT_DURATION_MS) {
                 // First failure or window expired: start fresh
@@ -386,7 +392,7 @@ public class AuthService {
             return;
         }
 
-        String rawToken = generateSecureToken();
+        String rawToken = CryptoUtil.generateSecureToken();
         user.setPasswordResetToken(CryptoUtil.sha256(rawToken));
         user.setPasswordResetTokenExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
         userRepository.save(user);
@@ -451,7 +457,7 @@ public class AuthService {
         if (userRepository.existsByEmail(request.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Un utilisateur avec cet email existe déjà");
         }
-        String rawToken = generateSecureToken();
+        String rawToken = CryptoUtil.generateSecureToken();
         String hashedToken = CryptoUtil.sha256(rawToken);
         User newAdmin = User.builder()
                 .email(request.email())
@@ -483,7 +489,7 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .filter(u -> orgId.equals(u.getOrganisationId()) && u.getRole() == User.UserRole.ADMIN)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Utilisateur non trouvé"));
-        String rawToken = generateSecureToken();
+        String rawToken = CryptoUtil.generateSecureToken();
         user.setInvitationToken(CryptoUtil.sha256(rawToken));
         user.setInvitationTokenExpiresAt(Instant.now().plus(Duration.ofHours(invitationExpiryHours)));
         user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
@@ -540,28 +546,12 @@ public class AuthService {
     /**
      * Returns true if the organisation's country code corresponds to a French-speaking country.
      * Falls back to false when the organisation is not found or pays is null.
+     * Delegates to {@link LocaleUtils#isFrenchSpeaking(String)} for the actual locale check.
      */
     private boolean resolveIsFrench(String orgId) {
         return organisationRepository.findById(orgId)
-                .map(org -> {
-                    String pays = org.getPays();
-                    if (pays == null) return false;
-                    String p = pays.toUpperCase();
-                    return p.startsWith("FR") || "MDG".equals(p) || "MG".equals(p)
-                            || "BE".equals(p) || "CH".equals(p) || "CA".equals(p) || "CAN".equals(p);
-                })
+                .map(org -> LocaleUtils.isFrenchSpeaking(org.getPays()))
                 .orElse(false);
-    }
-
-    /**
-     * Generates a cryptographically secure random 64-character hex token.
-     */
-    private String generateSecureToken() {
-        byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
-        StringBuilder sb = new StringBuilder(64);
-        for (byte b : bytes) sb.append(String.format("%02x", b));
-        return sb.toString();
     }
 
     /**
@@ -582,6 +572,7 @@ public class AuthService {
     /**
      * Verifies the 6-digit code sent by email during login.
      */
+    @Transactional
     public boolean verifyEmail2faCode(String email, String code) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));

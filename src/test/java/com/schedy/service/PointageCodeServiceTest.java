@@ -2,12 +2,16 @@ package com.schedy.service;
 
 import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageCodeDto;
+import com.schedy.dto.response.KioskPointageCodeResponse;
 import com.schedy.entity.PointageCode;
 import com.schedy.entity.PointageCode.UniteRotation;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.PointageCodeRepository;
+import com.schedy.util.CryptoUtil;
+import com.schedy.util.TotpEncryptionUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -15,13 +19,19 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.RecordComponent;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -34,6 +44,7 @@ class PointageCodeServiceTest {
     @Mock private EmployeRepository employeRepository;
     @Mock private TenantContext tenantContext;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private TotpEncryptionUtil pinEncryptionUtil;
 
     @InjectMocks private PointageCodeService pointageCodeService;
 
@@ -43,6 +54,8 @@ class PointageCodeServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        lenient().when(pinEncryptionUtil.encrypt(anyString()))
+                .thenAnswer(inv -> "ENC:" + inv.getArgument(0));
     }
 
     private PointageCode buildValidCode() {
@@ -50,7 +63,8 @@ class PointageCodeServiceTest {
                 .id("code-1")
                 .siteId(SITE_ID)
                 .code("ABCD1234")
-                .pin("123456")
+                .pin("ENC:123456")
+                .pinHash(CryptoUtil.sha256("123456"))
                 .rotationValeur(1)
                 .rotationUnite(UniteRotation.JOURS)
                 .validFrom(OffsetDateTime.now(ZoneOffset.UTC).minusHours(1))
@@ -60,47 +74,162 @@ class PointageCodeServiceTest {
                 .build();
     }
 
+    // =========================================================================
+    // B-01 — KioskPointageCodeResponse must not expose a 'pin' field
+    // =========================================================================
+
+    @Nested
+    @DisplayName("B-01 — KioskPointageCodeResponse record shape")
+    class KioskResponseShape {
+
+        @Test
+        @DisplayName("KioskPointageCodeResponse has exactly 7 components and no 'pin'")
+        void kioskResponse_hasSevenComponentsAndNoPinField() {
+            RecordComponent[] components = KioskPointageCodeResponse.class.getRecordComponents();
+            assertThat(components).hasSize(7);
+            Set<String> names = Arrays.stream(components)
+                    .map(RecordComponent::getName)
+                    .collect(Collectors.toSet());
+            assertThat(names).doesNotContain("pin");
+            assertThat(names).containsExactlyInAnyOrder(
+                    "siteId", "code", "rotationValeur", "rotationUnite",
+                    "validFrom", "validTo", "actif");
+        }
+
+        @Test
+        @DisplayName("getActiveForSitePublic() returns DTO without pin")
+        void getActiveForSitePublic_returnsKioskDto() {
+            PointageCode code = buildValidCode();
+            when(pointageCodeRepository.findFirstBySiteIdAndActifTrueOrderByValidFromDesc(SITE_ID))
+                    .thenReturn(Optional.of(code));
+            KioskPointageCodeResponse response = pointageCodeService.getActiveForSitePublic(SITE_ID);
+            assertThat(response).isNotNull();
+            assertThat(response.siteId()).isEqualTo(SITE_ID);
+            assertThat(response.code()).isEqualTo("ABCD1234");
+            assertThat(response.actif()).isTrue();
+        }
+    }
+
+    // =========================================================================
+    // B-02 — generateUniquePin uses pinHash, not plaintext
+    // =========================================================================
+
+    @Nested
+    @DisplayName("B-02 — generateUniquePin uses SHA-256 hash check")
+    class GenerateUniquePinSecurity {
+
+        @Test
+        @DisplayName("calls existsByPinHashAndActifTrue, never existsByPinAndActifTrue")
+        void generateNewCode_callsPinHashCheck() {
+            when(pointageCodeRepository
+                    .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
+                    .thenReturn(Optional.empty());
+            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
+            when(pointageCodeRepository.existsByPinHashAndActifTrue(anyString())).thenReturn(false);
+            when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
+                    .thenReturn(List.of());
+            when(pointageCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
+
+            verify(pointageCodeRepository, atLeastOnce()).existsByPinHashAndActifTrue(anyString());
+            verify(pointageCodeRepository, never()).existsByPinAndActifTrue(anyString());
+        }
+
+        @Test
+        @DisplayName("hash passed is valid 64-char SHA-256 hex")
+        void generateNewCode_passesSha256Hex() {
+            when(pointageCodeRepository
+                    .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
+                    .thenReturn(Optional.empty());
+            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
+            ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
+            when(pointageCodeRepository.existsByPinHashAndActifTrue(hashCaptor.capture())).thenReturn(false);
+            when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
+                    .thenReturn(List.of());
+            when(pointageCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
+
+            assertThat(hashCaptor.getValue()).hasSize(64).matches("[0-9a-f]{64}");
+        }
+
+        @Test
+        @DisplayName("PIN stored encrypted, not plaintext")
+        void generateNewCode_storesPinEncrypted() {
+            when(pointageCodeRepository
+                    .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
+                    .thenReturn(Optional.empty());
+            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
+            when(pointageCodeRepository.existsByPinHashAndActifTrue(anyString())).thenReturn(false);
+            when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
+                    .thenReturn(List.of());
+            ArgumentCaptor<PointageCode> captor = ArgumentCaptor.forClass(PointageCode.class);
+            when(pointageCodeRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
+
+            verify(pinEncryptionUtil, atLeastOnce()).encrypt(anyString());
+            assertThat(captor.getValue().getPin()).startsWith("ENC:");
+        }
+    }
+
+    // =========================================================================
+    // B-10 — validateKioskAdminCodeConfig @PostConstruct guard
+    // =========================================================================
+
+    @Nested
+    @DisplayName("B-10 — validateKioskAdminCodeConfig")
+    class ValidateKioskAdminCodeConfig {
+
+        private PointageCodeService buildService(String adminCode, String profile) {
+            PointageCodeService service = new PointageCodeService(
+                    pointageCodeRepository, employeRepository, tenantContext,
+                    passwordEncoder, pinEncryptionUtil);
+            ReflectionTestUtils.setField(service, "kioskAdminCode", adminCode);
+            ReflectionTestUtils.setField(service, "activeProfile", profile);
+            return service;
+        }
+
+        @Test
+        @DisplayName("throws for empty code in prod")
+        void emptyCode_prod_throws() {
+            assertThrows(IllegalStateException.class,
+                    () -> buildService("", "prod").validateKioskAdminCodeConfig());
+        }
+
+        @Test
+        @DisplayName("does NOT throw for empty code in dev (uses default)")
+        void emptyCode_dev_usesDefault() {
+            buildService("", "dev").validateKioskAdminCodeConfig();
+        }
+
+        @Test
+        @DisplayName("does NOT throw for 4-digit code in prod")
+        void validCode_prod_accepted() {
+            buildService("2580", "prod").validateKioskAdminCodeConfig();
+        }
+    }
+
+    // =========================================================================
+    // Pre-existing tests — updated for B-02
+    // =========================================================================
+
     @Test
     @DisplayName("getOrCreateForSite() returns existing valid code without creating a new one")
     void getOrCreate_returnsExisting() {
         PointageCode existing = buildValidCode();
         when(pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
                 .thenReturn(Optional.of(existing));
-
         PointageCodeDto result = pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
-
         assertThat(result.code()).isEqualTo("ABCD1234");
         verify(pointageCodeRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("getOrCreateForSite() generates new code when none exists")
-    void getOrCreate_generatesNew() {
-        when(pointageCodeRepository.findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
-                .thenReturn(Optional.empty());
-        when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
-        when(pointageCodeRepository.existsByPinAndActifTrue(anyString())).thenReturn(false);
-        when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
-                .thenReturn(List.of());
-        ArgumentCaptor<PointageCode> captor = ArgumentCaptor.forClass(PointageCode.class);
-        when(pointageCodeRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
-
-        PointageCodeDto result = pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
-
-        assertThat(result.siteId()).isEqualTo(SITE_ID);
-        assertThat(result.rotationValeur()).isEqualTo(1);
-        assertThat(result.rotationUnite()).isEqualTo("JOURS");
-        assertThat(captor.getValue().getCode()).hasSize(8);
-        assertThat(captor.getValue().getPin()).hasSize(6);
-    }
-
-    @Test
     @DisplayName("validateRotation rejects out-of-range value for JOURS")
     void validateRotation_rejectsOutOfRange() {
-        // validateRotation throws before any repository call — no stubs needed
-        // JOURS max is 30; passing 31 should throw
-        org.junit.jupiter.api.Assertions.assertThrows(
-                com.schedy.exception.BusinessRuleException.class,
+        assertThrows(com.schedy.exception.BusinessRuleException.class,
                 () -> pointageCodeService.getOrCreateForSite(SITE_ID, 31, UniteRotation.JOURS));
     }
 }
