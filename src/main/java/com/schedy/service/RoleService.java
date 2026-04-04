@@ -49,6 +49,7 @@ public class RoleService {
                 .nom(dto.nom())
                 .importance(dto.importance())
                 .couleur(dto.couleur())
+                .icone(dto.icone())
                 .organisationId(orgId)
                 .build();
         return roleRepository.save(role);
@@ -67,6 +68,7 @@ public class RoleService {
         role.setNom(dto.nom());
         role.setImportance(dto.importance());
         role.setCouleur(dto.couleur());
+        role.setIcone(dto.icone());
         return roleRepository.save(role);
     }
 

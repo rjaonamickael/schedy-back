@@ -10,12 +10,19 @@ import java.security.NoSuchAlgorithmException;
  *
  * <p>B-07: Also consolidates the secure-token generation that was previously
  * duplicated across AuthService, EmployeService, and SuperAdminService.
+ *
+ * <p>HIGH-05: SecureRandom is a singleton — constructing one per call is wasteful and
+ * incurs unnecessary entropy-seeding overhead on some JVM/OS combinations.
+ * java.security.SecureRandom is thread-safe and safe to share as a static field.
  */
 public final class CryptoUtil {
 
     private CryptoUtil() {
         // Utility class — no instances
     }
+
+    /** Shared, thread-safe SecureRandom instance (HIGH-05). */
+    private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
 
     /**
      * Computes the SHA-256 hex digest of the given input string (UTF-8 encoded).
@@ -49,7 +56,7 @@ public final class CryptoUtil {
      */
     public static String generateSecureToken() {
         byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         StringBuilder sb = new StringBuilder(64);
         for (byte b : bytes) sb.append(String.format("%02x", b));
         return sb.toString();

@@ -6,6 +6,7 @@ import com.schedy.dto.response.OrgSummaryResponse;
 import com.schedy.dto.response.RegistrationRequestResponse;
 import com.schedy.entity.RegistrationRequest;
 import com.schedy.entity.RegistrationRequest.RequestStatus;
+import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.RegistrationRequestRepository;
 import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class RegistrationRequestService {
     private final RegistrationRequestRepository registrationRequestRepository;
     private final SuperAdminService             superAdminService;
     private final EmailService                  emailService;
+    private final OrganisationRepository        organisationRepository;
 
     // =========================================================================
     // PUBLIC — submit a registration request
@@ -132,6 +134,22 @@ public class RegistrationRequestService {
         if (request.getStatus() != RequestStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Cette demande a déjà été traitée (statut : " + request.getStatus().name() + ").");
+        }
+
+        // MED-04: Idempotency guard — if an organisation with the same name was already
+        // created (e.g. by a prior approve call that partially succeeded before a crash),
+        // do not attempt a second creation. Mark the request APPROVED and return early
+        // with a clear message so the operator knows the org already exists.
+        if (organisationRepository.existsByNom(request.getOrganisationName())) {
+            log.warn("approve(): organisation '{}' already exists — marking request {} as APPROVED without re-creating",
+                    request.getOrganisationName(), id);
+            request.setStatus(RequestStatus.APPROVED);
+            request.setReviewedAt(OffsetDateTime.now());
+            request.setReviewedBy(superadminEmail);
+            registrationRequestRepository.save(request);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "L'organisation '" + request.getOrganisationName() + "' existe d\u00e9j\u00e0. "
+                + "La demande a \u00e9t\u00e9 marqu\u00e9e APPROV\u00c9E sans recr\u00e9ation.");
         }
 
         // Use the explicit planTier from the caller if provided; fall back to the requested plan

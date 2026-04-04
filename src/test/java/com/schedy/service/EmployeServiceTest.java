@@ -6,6 +6,7 @@ import com.schedy.entity.Employe;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.*;
 import com.schedy.repository.UserRepository;
+import com.schedy.util.CryptoUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -152,7 +153,7 @@ class EmployeServiceTest {
             Employe saved = captor.getValue();
             assertThat(saved.getPin()).isEqualTo(ENCODED_PIN);
             // pinHash must be the deterministic SHA-256 of the raw PIN
-            String expectedHash = EmployeService.sha256(RAW_PIN);
+            String expectedHash = CryptoUtil.sha256(RAW_PIN);
             assertThat(saved.getPinHash()).isEqualTo(expectedHash);
             verify(passwordEncoder).encode(RAW_PIN);
         }
@@ -202,7 +203,7 @@ class EmployeServiceTest {
             String newPin = "5678";
             String newEncoded = "$2a$10$newHash";
             Employe existing = Employe.builder().id(EMPLOYE_ID).nom("Alice")
-                    .pin(ENCODED_PIN).pinHash(EmployeService.sha256(RAW_PIN))
+                    .pin(ENCODED_PIN).pinHash(CryptoUtil.sha256(RAW_PIN))
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
@@ -215,7 +216,7 @@ class EmployeServiceTest {
             Employe result = employeService.update(EMPLOYE_ID, dto);
 
             assertThat(result.getPin()).isEqualTo(newEncoded);
-            assertThat(result.getPinHash()).isEqualTo(EmployeService.sha256(newPin));
+            assertThat(result.getPinHash()).isEqualTo(CryptoUtil.sha256(newPin));
             verify(passwordEncoder).encode(newPin);
         }
 
@@ -223,7 +224,7 @@ class EmployeServiceTest {
         @DisplayName("keeps existing PIN when dto.pin() is null")
         void update_withNullPin_keepsExistingPin() {
             Employe existing = Employe.builder().id(EMPLOYE_ID).nom("Alice")
-                    .pin(ENCODED_PIN).pinHash(EmployeService.sha256(RAW_PIN))
+                    .pin(ENCODED_PIN).pinHash(CryptoUtil.sha256(RAW_PIN))
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
@@ -236,7 +237,7 @@ class EmployeServiceTest {
 
             // PIN must remain unchanged
             assertThat(result.getPin()).isEqualTo(ENCODED_PIN);
-            assertThat(result.getPinHash()).isEqualTo(EmployeService.sha256(RAW_PIN));
+            assertThat(result.getPinHash()).isEqualTo(CryptoUtil.sha256(RAW_PIN));
             verify(passwordEncoder, never()).encode(anyString());
         }
 
@@ -244,7 +245,7 @@ class EmployeServiceTest {
         @DisplayName("keeps existing PIN when dto.pin() is blank")
         void update_withBlankPin_keepsExistingPin() {
             Employe existing = Employe.builder().id(EMPLOYE_ID).nom("Alice")
-                    .pin(ENCODED_PIN).pinHash(EmployeService.sha256(RAW_PIN))
+                    .pin(ENCODED_PIN).pinHash(CryptoUtil.sha256(RAW_PIN))
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
@@ -280,7 +281,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("returns employee when SHA-256 matches and bcrypt verifies")
         void findByPin_matchingHash_verifiesBcrypt() {
-            String hash = EmployeService.sha256(RAW_PIN);
+            String hash = CryptoUtil.sha256(RAW_PIN);
             Employe emp = Employe.builder().id(EMPLOYE_ID).nom("Alice")
                     .pin(ENCODED_PIN).pinHash(hash).organisationId(ORG_ID).build();
             when(employeRepository.findByPinHashAndOrganisationId(hash, ORG_ID)).thenReturn(Optional.of(emp));
@@ -296,7 +297,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("returns empty when no employee has the given PIN hash")
         void findByPin_noMatch_returnsEmpty() {
-            String hash = EmployeService.sha256(RAW_PIN);
+            String hash = CryptoUtil.sha256(RAW_PIN);
             when(employeRepository.findByPinHashAndOrganisationId(hash, ORG_ID)).thenReturn(Optional.empty());
 
             Optional<Employe> result = employeService.findByPin(RAW_PIN);
@@ -312,7 +313,7 @@ class EmployeServiceTest {
             // Edge case: same SHA-256 prefix but bcrypt doesn't match (theoretically
             // possible if the stored PIN has been changed without updating the hash, or
             // in a collision scenario).
-            String hash = EmployeService.sha256(RAW_PIN);
+            String hash = CryptoUtil.sha256(RAW_PIN);
             Employe emp = Employe.builder().id(EMPLOYE_ID).nom("Alice")
                     .pin(ENCODED_PIN).pinHash(hash).organisationId(ORG_ID).build();
             when(employeRepository.findByPinHashAndOrganisationId(hash, ORG_ID)).thenReturn(Optional.of(emp));
@@ -326,7 +327,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("returns empty when employee has null stored PIN")
         void findByPin_nullStoredPin_returnsEmpty() {
-            String hash = EmployeService.sha256(RAW_PIN);
+            String hash = CryptoUtil.sha256(RAW_PIN);
             // Employee found by hash but pin field is null (data inconsistency guard)
             Employe emp = Employe.builder().id(EMPLOYE_ID).nom("Alice")
                     .pin(null).pinHash(hash).organisationId(ORG_ID).build();
@@ -385,8 +386,8 @@ class EmployeServiceTest {
         @Test
         @DisplayName("produces identical digest for identical input")
         void sha256_consistentResults() {
-            String hash1 = EmployeService.sha256("1234");
-            String hash2 = EmployeService.sha256("1234");
+            String hash1 = CryptoUtil.sha256("1234");
+            String hash2 = CryptoUtil.sha256("1234");
 
             assertThat(hash1).isEqualTo(hash2);
         }
@@ -394,8 +395,8 @@ class EmployeServiceTest {
         @Test
         @DisplayName("produces different digest for different inputs")
         void sha256_differentInputs_differentHashes() {
-            String hash1 = EmployeService.sha256("1234");
-            String hash2 = EmployeService.sha256("5678");
+            String hash1 = CryptoUtil.sha256("1234");
+            String hash2 = CryptoUtil.sha256("5678");
 
             assertThat(hash1).isNotEqualTo(hash2);
         }
@@ -403,7 +404,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("produces a 64-character hexadecimal string")
         void sha256_returns64CharHex() {
-            String hash = EmployeService.sha256("anyInput");
+            String hash = CryptoUtil.sha256("anyInput");
 
             // SHA-256 produces 32 bytes = 64 hex characters
             assertThat(hash).hasSize(64).matches("[0-9a-f]+");
@@ -413,7 +414,7 @@ class EmployeServiceTest {
         @DisplayName("well-known digest for PIN 1234")
         void sha256_knownVector() {
             // echo -n "1234" | sha256sum = 03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4
-            String hash = EmployeService.sha256("1234");
+            String hash = CryptoUtil.sha256("1234");
 
             assertThat(hash).isEqualTo("03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4");
         }

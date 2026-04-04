@@ -11,8 +11,10 @@ import com.schedy.dto.response.PromoCodeResponse;
 import com.schedy.dto.response.RegistrationRequestResponse;
 import com.schedy.dto.response.SubscriptionResponse;
 import com.schedy.dto.response.SuperAdminDashboardResponse;
+import com.schedy.dto.response.TestimonialResponse;
 import com.schedy.service.RegistrationRequestService;
 import com.schedy.service.SuperAdminService;
+import com.schedy.service.TestimonialService;
 import com.schedy.service.TotpService;
 import com.schedy.util.IpUtils;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,6 +42,7 @@ public class SuperAdminController {
     private final SuperAdminService             superAdminService;
     private final TotpService                   totpService;
     private final RegistrationRequestService    registrationRequestService;
+    private final TestimonialService            testimonialService;
 
     @org.springframework.beans.factory.annotation.Value("${schedy.rate-limit.trusted-proxies:127.0.0.1,::1,0:0:0:0:0:0:0:1}")
     private List<String> trustedProxiesList;
@@ -350,6 +353,57 @@ public class SuperAdminController {
     public ResponseEntity<Void> deletePlanTemplate(@PathVariable String id) {
         superAdminService.deletePlanTemplate(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // TESTIMONIALS
+    // =========================================================================
+
+    /**
+     * GET /api/v1/superadmin/testimonials
+     * Returns all testimonials across all organisations, most recent first.
+     */
+    @GetMapping("/testimonials")
+    public ResponseEntity<List<TestimonialResponse>> getAllTestimonials() {
+        return ResponseEntity.ok(testimonialService.getAllForAdmin());
+    }
+
+    /**
+     * PUT /api/v1/superadmin/testimonials/{id}/approve
+     * Approves a testimonial and sets its display order for the public carousel.
+     * Body: { "displayOrder": 1 }
+     * Returns 409 if the testimonial is already approved.
+     */
+    @PutMapping("/testimonials/{id}/approve")
+    public ResponseEntity<TestimonialResponse> approveTestimonial(
+            @PathVariable String id,
+            @RequestBody(required = false) TestimonialApproveRequest request) {
+        int displayOrder = (request != null) ? request.displayOrder() : 0;
+        return ResponseEntity.ok(testimonialService.approve(id, displayOrder));
+    }
+
+    /**
+     * PUT /api/v1/superadmin/testimonials/{id}/reject
+     * Rejects a testimonial. It will no longer appear on the public landing page.
+     * Returns 409 if the testimonial is already rejected.
+     */
+    @PutMapping("/testimonials/{id}/reject")
+    public ResponseEntity<TestimonialResponse> rejectTestimonial(@PathVariable String id) {
+        return ResponseEntity.ok(testimonialService.reject(id));
+    }
+
+    /**
+     * PUT /api/v1/superadmin/testimonials/{id}/order
+     * Updates the display order of an already-approved testimonial.
+     * Body: { "displayOrder": 3 }
+     * Returns 422 if the testimonial is not in APPROVED status.
+     */
+    @PutMapping("/testimonials/{id}/order")
+    public ResponseEntity<TestimonialResponse> updateTestimonialOrder(
+            @PathVariable String id,
+            @RequestBody Map<String, Integer> body) {
+        int order = body != null && body.containsKey("displayOrder") ? body.get("displayOrder") : 0;
+        return ResponseEntity.ok(testimonialService.updateDisplayOrder(id, order));
     }
 
     // =========================================================================

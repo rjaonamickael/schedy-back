@@ -276,12 +276,27 @@ public class SuperAdminService {
         log.warn("SuperAdmin: DELETED organisation '{}' (id: {})", org.getNom(), orgId);
     }
 
+    /** Valid status values accepted by updateOrgStatus (MED-03). */
+    private static final java.util.Set<String> VALID_ORG_STATUSES = java.util.Set.of(
+            Organisation.STATUS_ACTIVE, Organisation.STATUS_SUSPENDED);
+
     @Transactional
     public OrgSummaryResponse updateOrgStatus(String id, String status) {
+        if (status == null || status.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Le statut ne peut pas \u00eatre vide.");
+        }
+        String normalizedStatus = status.toUpperCase().trim();
+        // MED-03: validate against known constants to prevent persisting arbitrary strings
+        if (!VALID_ORG_STATUSES.contains(normalizedStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Statut invalide : '" + status + "'. Valeurs accept\u00e9es : "
+                    + String.join(", ", VALID_ORG_STATUSES));
+        }
         Organisation org = requireOrg(id);
-        org.setStatus(status.toUpperCase());
+        org.setStatus(normalizedStatus);
         organisationRepository.save(org);
-        log.info("SuperAdmin: organisation '{}' status updated to '{}'", org.getNom(), status);
+        log.info("SuperAdmin: organisation '{}' status updated to '{}'", org.getNom(), normalizedStatus);
         return toOrgSummary(org);
     }
 

@@ -71,6 +71,12 @@ public final class LocaleUtils {
             case "FR"         -> ZoneId.of("Europe/Paris");        // UTC+1 / UTC+2 (DST)
             case "BE"         -> ZoneId.of("Europe/Brussels");
             case "CH"         -> ZoneId.of("Europe/Zurich");
+            // HIGH-06: added missing beta-market and French-speaking countries
+            case "LU"         -> ZoneId.of("Europe/Luxembourg");   // UTC+1 / UTC+2 (DST)
+            case "HT"         -> ZoneId.of("America/Port-au-Prince"); // UTC-5 / UTC-4 (DST)
+            case "SN"         -> ZoneId.of("Africa/Dakar");        // UTC+0 (no DST)
+            case "CI"         -> ZoneId.of("Africa/Abidjan");      // UTC+0 (no DST)
+            case "CM"         -> ZoneId.of("Africa/Douala");       // UTC+1 (no DST)
             default           -> ZoneOffset.UTC;
         };
     }

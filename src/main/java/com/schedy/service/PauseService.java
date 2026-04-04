@@ -5,7 +5,9 @@ import com.schedy.entity.Pause;
 import com.schedy.entity.StatutPause;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
+import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.PauseRepository;
+import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -25,6 +28,7 @@ public class PauseService {
 
     private final PauseRepository pauseRepository;
     private final TenantContext tenantContext;
+    private final OrganisationRepository organisationRepository;
 
     @Transactional(readOnly = true)
     public List<Pause> findByDate(String date) {
@@ -35,19 +39,35 @@ public class PauseService {
      * Returns pauses for the caller's organisation on the given date.
      * When {@code siteId} is non-null the result is narrowed to that site only,
      * enabling multi-site dashboards without breaking single-site callers.
+     *
+     * <p>MED-02: Day boundaries are now computed in the organisation's local timezone
+     * (via {@link LocaleUtils#zoneIdFromPays}) rather than UTC, matching the behaviour
+     * of {@link PointageService}. For orgs in UTC+3 (Madagascar) a "day" query at UTC
+     * midnight would otherwise miss the first 3 hours of the local business day.
      */
     @Transactional(readOnly = true)
     public List<Pause> findByDate(String date, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
+        ZoneId orgZone = resolveOrgZone(orgId);
         LocalDate ld = LocalDate.parse(date);
-        OffsetDateTime startOfDay = ld.atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime endOfDay = ld.atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
+        OffsetDateTime startOfDay = ld.atStartOfDay(orgZone).toOffsetDateTime();
+        OffsetDateTime endOfDay = ld.atTime(LocalTime.MAX).atZone(orgZone).toOffsetDateTime();
 
         if (siteId != null && !siteId.isBlank()) {
             return pauseRepository.findBySiteIdAndOrganisationIdAndDebutBetween(
                     siteId, orgId, startOfDay, endOfDay);
         }
         return pauseRepository.findByOrganisationIdAndDebutBetween(orgId, startOfDay, endOfDay);
+    }
+
+    /**
+     * Resolves the organisation's timezone from its {@code pays} field (MED-02).
+     * Falls back to UTC when the organisation is not found or has no pays set.
+     */
+    private ZoneId resolveOrgZone(String orgId) {
+        return organisationRepository.findById(orgId)
+                .map(org -> LocaleUtils.zoneIdFromPays(org.getPays()))
+                .orElse(ZoneOffset.UTC);
     }
 
     @Transactional

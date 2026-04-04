@@ -92,7 +92,7 @@ public class EmployeService {
     @Transactional(readOnly = true)
     public Optional<Employe> findByPin(String rawPin) {
         String orgId = tenantContext.requireOrganisationId();
-        String hash = sha256(rawPin);
+        String hash = CryptoUtil.sha256(rawPin);
         return employeRepository.findByPinHashAndOrganisationId(hash, orgId)
                 .filter(emp -> emp.getPin() != null && passwordEncoder.matches(rawPin, emp.getPin()));
     }
@@ -146,7 +146,7 @@ public class EmployeService {
                 .dateNaissance(dto.dateNaissance())
                 .dateEmbauche(dto.dateEmbauche())
                 .pin(dto.pin() != null ? passwordEncoder.encode(dto.pin()) : null)
-                .pinHash(dto.pin() != null ? sha256(dto.pin()) : null)
+                .pinHash(dto.pin() != null ? CryptoUtil.sha256(dto.pin()) : null)
                 .pinClair(dto.pin() != null ? pinEncryptionUtil.encrypt(dto.pin()) : null)
                 .pinClairEncrypted(dto.pin() != null)
                 .organisationId(orgId)
@@ -159,7 +159,7 @@ public class EmployeService {
         if (dto.email() != null && !dto.email().isBlank()) {
             if (!userRepository.existsByEmail(dto.email())) {
                 String rawToken = CryptoUtil.generateSecureToken();
-                String hashedToken = sha256(rawToken);
+                String hashedToken = CryptoUtil.sha256(rawToken);
                 User newUser = User.builder()
                         .email(dto.email())
                         .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
@@ -214,7 +214,7 @@ public class EmployeService {
         }
         if (dto.pin() != null && !dto.pin().isBlank()) {
             employe.setPin(passwordEncoder.encode(dto.pin()));
-            employe.setPinHash(sha256(dto.pin()));
+            employe.setPinHash(CryptoUtil.sha256(dto.pin()));
             employe.setPinClair(pinEncryptionUtil.encrypt(dto.pin()));
             employe.setPinClairEncrypted(true);
         }
@@ -436,7 +436,7 @@ public class EmployeService {
 
                 // Generate invitation token
                 String rawToken = CryptoUtil.generateSecureToken();
-                String hashedToken = sha256(rawToken);
+                String hashedToken = CryptoUtil.sha256(rawToken);
 
                 // Create user with unusable password
                 User newUser = User.builder()
@@ -495,7 +495,7 @@ public class EmployeService {
         }
 
         String rawToken = CryptoUtil.generateSecureToken();
-        String hashedToken = sha256(rawToken);
+        String hashedToken = CryptoUtil.sha256(rawToken);
 
         user.setInvitationToken(hashedToken);
         user.setInvitationTokenExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(invitationExpiryHours)));
@@ -542,11 +542,4 @@ public class EmployeService {
         announcementRepository.save(announcement);
     }
 
-    /**
-     * Compute SHA-256 hex digest of a string. Delegates to the shared {@link com.schedy.util.CryptoUtil}
-     * to avoid duplicating cryptographic logic across services.
-     */
-    public static String sha256(String input) {
-        return com.schedy.util.CryptoUtil.sha256(input);
-    }
 }

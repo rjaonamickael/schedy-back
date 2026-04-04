@@ -310,9 +310,12 @@ public class CongeService {
         log.info("Leave request {} approved (was {})", id, statutActuel);
         demandeCongeRepository.save(demande);
 
-        // Update quota: move days to utilise
+        // MED-08: Use pessimistic write lock to prevent concurrent approval of the same
+        // demande from producing a double-debit on the banque. Without the lock, two
+        // concurrent PATCH /approve requests could both read the same solde and both
+        // decrement it, causing an under-count. findForUpdate() issues SELECT … FOR UPDATE.
         try {
-            banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
+            banqueCongeRepository.findForUpdate(demande.getEmployeId(), demande.getTypeCongeId(), orgId)
                     .ifPresent(banque -> {
                         if (!wasRefused) {
                             // Was en_attente: move from enAttente to utilise

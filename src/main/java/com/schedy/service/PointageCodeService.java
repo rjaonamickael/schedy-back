@@ -159,6 +159,13 @@ public class PointageCodeService {
      * Single atomic method that validates the code/PIN and returns both siteId and organisationId.
      * Eliminates the TOCTOU between resolveOrganisationIdFromCode and validateCode (B-M18).
      * Reduces 4 DB round-trips to at most 2.
+     *
+     * <p>MED-07: Org-scoping note — this endpoint is intentionally unauthenticated (kiosk context),
+     * so TenantContext is unavailable and we cannot filter by orgId at query time. Org isolation is
+     * enforced at the caller level: the returned {@code organisationId} is extracted from the
+     * PointageCode row itself and subsequently verified against the employee via
+     * {@link #verifyEmployeBelongsToOrganisation}. As a defence-in-depth guard we reject any
+     * code whose stored {@code organisationId} is null, which should never occur for valid rows.
      */
     @Transactional(readOnly = true)
     public CodeValidationResult validateAndResolve(String codeOrPin) {
@@ -166,6 +173,11 @@ public class PointageCodeService {
         Optional<PointageCode> byCode = pointageCodeRepository.findFirstByCodeAndActifTrueOrderByValidFromDesc(codeOrPin);
         if (byCode.isPresent()) {
             PointageCode pc = byCode.get();
+            // MED-07: reject orphan rows that have no organisation attached
+            if (pc.getOrganisationId() == null) {
+                log.error("PointageCode {} has no organisationId — rejecting (data integrity issue)", pc.getId());
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Code invalide");
+            }
             if (pc.isValid()) {
                 return new CodeValidationResult(pc.getSiteId(), pc.getOrganisationId());
             }
@@ -176,6 +188,11 @@ public class PointageCodeService {
         Optional<PointageCode> byPin = pointageCodeRepository.findFirstByPinHashAndActifTrueOrderByValidFromDesc(sha256(codeOrPin));
         if (byPin.isPresent()) {
             PointageCode pc = byPin.get();
+            // MED-07: reject orphan rows that have no organisation attached
+            if (pc.getOrganisationId() == null) {
+                log.error("PointageCode {} has no organisationId — rejecting (data integrity issue)", pc.getId());
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Code invalide");
+            }
             if (pc.isValid()) {
                 return new CodeValidationResult(pc.getSiteId(), pc.getOrganisationId());
             }

@@ -29,6 +29,8 @@ import java.util.stream.Collectors;
  * - /api/v1/auth/refresh: 10 requests per minute
  * - /api/v1/pointage-codes/validate: 10 requests per minute
  * - /api/v1/public/registration-requests: 5 requests per hour
+ * - /api/v1/public/waitlist/join: 3 requests per minute
+ * - /api/v1/public/testimonials: 60 requests per minute (read-only landing page)
  * - All other paths: no limit
  *
  * Security: X-Forwarded-For is only trusted when the direct connection
@@ -59,8 +61,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, BucketEntry> forgotPasswordBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> resetPasswordBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> registrationRequestBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> waitlistBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> twoFaBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> refreshBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> publicTestimonialBuckets = new ConcurrentHashMap<>();
 
     private final Set<String> trustedProxies;
 
@@ -101,6 +105,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             entry = resolveBucket(invitationBuckets, ip, 5, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/public/registration-requests")) {
             entry = resolveBucket(registrationRequestBuckets, ip, 5, Duration.ofHours(1));
+        } else if (path.startsWith("/api/v1/public/waitlist/")) {
+            entry = resolveBucket(waitlistBuckets, ip, 3, Duration.ofMinutes(1));
+        } else if (path.startsWith("/api/v1/public/testimonials")) {
+            entry = resolveBucket(publicTestimonialBuckets, ip, 60, Duration.ofMinutes(1));
         }
 
         if (entry != null && !entry.bucket().tryConsume(1)) {
@@ -160,8 +168,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
         evicted += evictStaleEntries(forgotPasswordBuckets, threshold);
         evicted += evictStaleEntries(resetPasswordBuckets, threshold);
         evicted += evictStaleEntries(registrationRequestBuckets, threshold);
+        evicted += evictStaleEntries(waitlistBuckets, threshold);
         evicted += evictStaleEntries(twoFaBuckets, threshold);
         evicted += evictStaleEntries(refreshBuckets, threshold);
+        evicted += evictStaleEntries(publicTestimonialBuckets, threshold);
         if (evicted > 0) {
             log.debug("Rate limit buckets evicted ({} stale entries removed)", evicted);
         }

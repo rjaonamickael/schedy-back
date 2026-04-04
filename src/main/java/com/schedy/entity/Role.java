@@ -24,6 +24,9 @@ public class Role {
 
     private String couleur;
 
+    @Column(length = 50)
+    private String icone;
+
     @Column(name = "organisation_id")
     private String organisationId;
 }
