@@ -21,7 +21,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
-        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+        log.warn("Resource not found: {}", ex.getMessage());
+        return buildResponse(HttpStatus.NOT_FOUND, "Ressource introuvable.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

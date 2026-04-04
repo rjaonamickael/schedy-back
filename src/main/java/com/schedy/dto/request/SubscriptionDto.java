@@ -4,8 +4,8 @@ import java.time.OffsetDateTime;
 
 public record SubscriptionDto(
     String planTier,
-    int maxEmployees,
-    int maxSites,
+    Integer maxEmployees,
+    Integer maxSites,
     String promoCode,
     OffsetDateTime trialEndsAt
 ) {}

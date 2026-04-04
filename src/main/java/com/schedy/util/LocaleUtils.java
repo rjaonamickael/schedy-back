@@ -1,5 +1,7 @@
 package com.schedy.util;
 
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Set;
 
 /**
@@ -49,6 +51,29 @@ public final class LocaleUtils {
         // French Saint-Martin / Saint-Barth / Saint-Pierre
         "PM", "BL", "MF"
     );
+
+    /**
+     * Returns the canonical {@link ZoneId} for a given ISO country code (B-22).
+     *
+     * <p>Accepts both ISO alpha-2 (e.g. "MG") and the legacy alpha-3 variants already
+     * present in the data ("MDG", "CAN"). The mapping covers the two primary beta markets
+     * (Madagascar UTC+3, Quebec UTC-5/-4) plus France and a safe UTC default.
+     *
+     * @param pays ISO alpha-2 or alpha-3 country code stored on {@code Organisation.pays};
+     *             {@code null} is safe and returns UTC
+     * @return a non-null {@link ZoneId}; defaults to {@link ZoneOffset#UTC}
+     */
+    public static ZoneId zoneIdFromPays(String pays) {
+        if (pays == null) return ZoneOffset.UTC;
+        return switch (pays.toUpperCase().trim()) {
+            case "MDG", "MG"  -> ZoneId.of("Indian/Antananarivo"); // UTC+3
+            case "CAN", "CA"  -> ZoneId.of("America/Montreal");    // UTC-5 / UTC-4 (DST)
+            case "FR"         -> ZoneId.of("Europe/Paris");        // UTC+1 / UTC+2 (DST)
+            case "BE"         -> ZoneId.of("Europe/Brussels");
+            case "CH"         -> ZoneId.of("Europe/Zurich");
+            default           -> ZoneOffset.UTC;
+        };
+    }
 
     /**
      * Returns {@code true} if the given ISO country code corresponds to a

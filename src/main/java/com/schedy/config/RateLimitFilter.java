@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  * IP-based rate limiting for auth and public kiosk endpoints.
  * - /api/v1/auth/login: 10 requests per minute
  * - /api/v1/auth/register: 3 requests per minute
+ * - /api/v1/auth/2fa/*: 5 requests per minute
+ * - /api/v1/auth/refresh: 10 requests per minute
  * - /api/v1/pointage-codes/validate: 10 requests per minute
  * - /api/v1/public/registration-requests: 5 requests per hour
  * - All other paths: no limit
@@ -39,15 +41,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    private final Map<String, Bucket> loginBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> registerBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> validateBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> kioskAdminBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> kioskPinClockBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> invitationBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> forgotPasswordBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> resetPasswordBuckets = new ConcurrentHashMap<>();
-    private final Map<String, Bucket> registrationRequestBuckets = new ConcurrentHashMap<>();
+    /** Stale bucket eviction threshold: 10 minutes of inactivity. */
+    private static final long STALE_THRESHOLD_MS = 600_000;
+
+    /**
+     * Wraps a rate-limit Bucket with the timestamp of the last request,
+     * so eviction can target only stale entries instead of clearing everything.
+     */
+    private record BucketEntry(Bucket bucket, long lastAccessMillis) {}
+
+    private final Map<String, BucketEntry> loginBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> registerBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> validateBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> kioskAdminBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> kioskPinClockBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> invitationBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> forgotPasswordBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> resetPasswordBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> registrationRequestBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> twoFaBuckets = new ConcurrentHashMap<>();
+    private final Map<String, BucketEntry> refreshBuckets = new ConcurrentHashMap<>();
 
     private final Set<String> trustedProxies;
 
@@ -65,28 +78,32 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String ip = getClientIp(request);
 
-        Bucket bucket = null;
-        if (path.startsWith("/api/v1/auth/login")) {
-            bucket = loginBuckets.computeIfAbsent(ip, k -> createBucket(10, Duration.ofMinutes(1)));
+        BucketEntry entry = null;
+        if (path.startsWith("/api/v1/auth/2fa/")) {
+            entry = resolveBucket(twoFaBuckets, ip, 5, Duration.ofMinutes(1));
+        } else if (path.startsWith("/api/v1/auth/refresh")) {
+            entry = resolveBucket(refreshBuckets, ip, 10, Duration.ofMinutes(1));
+        } else if (path.startsWith("/api/v1/auth/login")) {
+            entry = resolveBucket(loginBuckets, ip, 10, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/auth/register")) {
-            bucket = registerBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofMinutes(1)));
+            entry = resolveBucket(registerBuckets, ip, 3, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/pointage-codes/kiosk/admin")) {
-            bucket = kioskAdminBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofMinutes(1)));
+            entry = resolveBucket(kioskAdminBuckets, ip, 3, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/pointage-codes/kiosk/pin-clock")) {
-            bucket = kioskPinClockBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
+            entry = resolveBucket(kioskPinClockBuckets, ip, 5, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/pointage-codes/validate")) {
-            bucket = validateBuckets.computeIfAbsent(ip, k -> createBucket(10, Duration.ofMinutes(1)));
+            entry = resolveBucket(validateBuckets, ip, 10, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/auth/forgot-password")) {
-            bucket = forgotPasswordBuckets.computeIfAbsent(ip, k -> createBucket(3, Duration.ofHours(1)));
+            entry = resolveBucket(forgotPasswordBuckets, ip, 3, Duration.ofHours(1));
         } else if (path.startsWith("/api/v1/auth/reset-password")) {
-            bucket = resetPasswordBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
+            entry = resolveBucket(resetPasswordBuckets, ip, 5, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/auth/set-password") || path.startsWith("/api/v1/auth/validate-invitation")) {
-            bucket = invitationBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofMinutes(1)));
+            entry = resolveBucket(invitationBuckets, ip, 5, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/public/registration-requests")) {
-            bucket = registrationRequestBuckets.computeIfAbsent(ip, k -> createBucket(5, Duration.ofHours(1)));
+            entry = resolveBucket(registrationRequestBuckets, ip, 5, Duration.ofHours(1));
         }
 
-        if (bucket != null && !bucket.tryConsume(1)) {
+        if (entry != null && !entry.bucket().tryConsume(1)) {
             response.setStatus(429);
             response.setContentType("application/json");
             response.getWriter().write("{\"status\":429,\"error\":\"Trop de requetes. Reessayez dans quelques instants.\"}");
@@ -94,6 +111,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Resolves (or creates) a BucketEntry for the given IP and updates its last-access
+     * timestamp atomically. This ensures active IPs always carry a current timestamp so
+     * the scheduled eviction never prematurely removes an in-use bucket.
+     */
+    private BucketEntry resolveBucket(Map<String, BucketEntry> buckets, String ip,
+                                      int capacity, Duration refillDuration) {
+        long now = System.currentTimeMillis();
+        // Create entry if absent (first request from this IP)
+        buckets.computeIfAbsent(ip, k -> new BucketEntry(createBucket(capacity, refillDuration), now));
+        // Stamp current time on every access, preserving the existing Bucket instance
+        return buckets.computeIfPresent(ip, (k, existing) -> new BucketEntry(existing.bucket(), now));
     }
 
     private Bucket createBucket(int capacity, Duration refillDuration) {
@@ -109,27 +140,40 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Evict all rate limit buckets every 5 minutes to prevent unbounded memory growth.
-     * Buckets auto-refill on creation, so clearing them is safe -- new requests
-     * will simply create fresh buckets with full capacity.
+     * Evict STALE rate limit buckets every 5 minutes to prevent unbounded memory growth.
+     *
+     * Only entries whose last access is older than {@link #STALE_THRESHOLD_MS} (10 min) are
+     * removed. Active IPs keep their depleted buckets, which closes the bypass window that
+     * existed when all buckets were cleared indiscriminately -- an attacker who times a burst
+     * right after eviction no longer gets a fresh bucket with full capacity.
      */
     @Scheduled(fixedRate = 300_000) // 5 minutes
     public void evictBuckets() {
-        int total = loginBuckets.size() + registerBuckets.size() + validateBuckets.size()
-                + kioskAdminBuckets.size() + kioskPinClockBuckets.size() + invitationBuckets.size()
-                + forgotPasswordBuckets.size() + resetPasswordBuckets.size()
-                + registrationRequestBuckets.size();
-        if (total > 0) {
-            loginBuckets.clear();
-            registerBuckets.clear();
-            validateBuckets.clear();
-            kioskAdminBuckets.clear();
-            kioskPinClockBuckets.clear();
-            invitationBuckets.clear();
-            forgotPasswordBuckets.clear();
-            resetPasswordBuckets.clear();
-            registrationRequestBuckets.clear();
-            log.debug("Rate limit buckets evicted ({} entries cleared)", total);
+        long threshold = System.currentTimeMillis() - STALE_THRESHOLD_MS;
+        int evicted = 0;
+        evicted += evictStaleEntries(loginBuckets, threshold);
+        evicted += evictStaleEntries(registerBuckets, threshold);
+        evicted += evictStaleEntries(validateBuckets, threshold);
+        evicted += evictStaleEntries(kioskAdminBuckets, threshold);
+        evicted += evictStaleEntries(kioskPinClockBuckets, threshold);
+        evicted += evictStaleEntries(invitationBuckets, threshold);
+        evicted += evictStaleEntries(forgotPasswordBuckets, threshold);
+        evicted += evictStaleEntries(resetPasswordBuckets, threshold);
+        evicted += evictStaleEntries(registrationRequestBuckets, threshold);
+        evicted += evictStaleEntries(twoFaBuckets, threshold);
+        evicted += evictStaleEntries(refreshBuckets, threshold);
+        if (evicted > 0) {
+            log.debug("Rate limit buckets evicted ({} stale entries removed)", evicted);
         }
+    }
+
+    /**
+     * Removes entries from the given map whose last access time is before the threshold.
+     * Returns the number of entries removed.
+     */
+    private int evictStaleEntries(Map<String, BucketEntry> buckets, long threshold) {
+        int sizeBefore = buckets.size();
+        buckets.entrySet().removeIf(e -> e.getValue().lastAccessMillis() < threshold);
+        return sizeBefore - buckets.size();
     }
 }

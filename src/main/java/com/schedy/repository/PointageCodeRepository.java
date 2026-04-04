@@ -2,6 +2,8 @@ package com.schedy.repository;
 
 import com.schedy.entity.PointageCode;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -27,4 +29,18 @@ public interface PointageCodeRepository extends JpaRepository<PointageCode, Stri
 
     // Scheduler: fetch all active codes whose validity window has passed
     List<PointageCode> findByActifTrueAndValidToBefore(OffsetDateTime threshold);
+
+    /**
+     * Batch uniqueness check for PIN hashes — replaces per-candidate existsByPinHash queries (B-15).
+     * Returns only the hashes that are already in use by an active PointageCode.
+     */
+    @Query("SELECT pc.pinHash FROM PointageCode pc WHERE pc.pinHash IN :hashes AND pc.actif = true")
+    List<String> findExistingPinHashes(@Param("hashes") List<String> hashes);
+
+    /**
+     * Batch uniqueness check for plain codes — replaces per-candidate existsByCode queries (B-15).
+     * Returns only the codes that are already in use by an active PointageCode.
+     */
+    @Query("SELECT pc.code FROM PointageCode pc WHERE pc.code IN :codes AND pc.actif = true")
+    List<String> findExistingCodes(@Param("codes") List<String> codes);
 }

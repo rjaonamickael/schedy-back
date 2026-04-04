@@ -6,8 +6,10 @@ import com.schedy.dto.request.PointageManuelRequest;
 import com.schedy.dto.PointageDto;
 import com.schedy.entity.*;
 import com.schedy.exception.ResourceNotFoundException;
+import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.PointageRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -21,6 +23,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +36,7 @@ public class PointageService {
     private final PointageRepository pointageRepository;
     private final UserRepository userRepository;
     private final TenantContext tenantContext;
+    private final OrganisationRepository organisationRepository;
 
     @Transactional(readOnly = true)
     public Page<Pointage> findAll(Pageable pageable) {
@@ -56,16 +60,18 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findTodayAll() {
         String orgId = tenantContext.requireOrganisationId();
-        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
+        ZoneId zone = resolveOrgZone(orgId);
+        OffsetDateTime startOfDay = LocalDate.now(zone).atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime endOfDay = LocalDate.now(zone).atTime(LocalTime.MAX).atZone(zone).toOffsetDateTime();
         return pointageRepository.findByOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(orgId, startOfDay, endOfDay);
     }
 
     @Transactional(readOnly = true)
     public List<Pointage> findTodayAllBySite(String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
+        ZoneId zone = resolveOrgZone(orgId);
+        OffsetDateTime startOfDay = LocalDate.now(zone).atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime endOfDay = LocalDate.now(zone).atTime(LocalTime.MAX).atZone(zone).toOffsetDateTime();
         return pointageRepository.findBySiteIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(siteId, orgId, startOfDay, endOfDay);
     }
 
@@ -84,8 +90,9 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findTodayByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
-        OffsetDateTime startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime endOfDay = LocalDate.now(ZoneOffset.UTC).atTime(LocalTime.MAX).atOffset(ZoneOffset.UTC);
+        ZoneId zone = resolveOrgZone(orgId);
+        OffsetDateTime startOfDay = LocalDate.now(zone).atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime endOfDay = LocalDate.now(zone).atTime(LocalTime.MAX).atZone(zone).toOffsetDateTime();
         return pointageRepository.findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(
                 employeId, orgId, startOfDay, endOfDay);
     }
@@ -200,6 +207,18 @@ public class PointageService {
         } catch (IllegalArgumentException e) {
             throw new com.schedy.exception.BusinessRuleException("Valeur invalide pour statut pointage: " + value);
         }
+    }
+
+    /**
+     * Resolves the organisation's timezone from its {@code pays} field (B-22).
+     * Falls back to UTC when the organisation is not found or has no pays set.
+     * This is a single-row primary-key lookup and is covered by the JPA first-level cache
+     * within the same transaction, so it adds no measurable overhead.
+     */
+    private ZoneId resolveOrgZone(String orgId) {
+        return organisationRepository.findById(orgId)
+                .map(org -> LocaleUtils.zoneIdFromPays(org.getPays()))
+                .orElse(ZoneOffset.UTC);
     }
 
     /**

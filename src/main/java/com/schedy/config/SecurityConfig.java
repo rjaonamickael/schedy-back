@@ -51,7 +51,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/public/**").permitAll()
                         .requestMatchers("/api/v1/pointage-codes/kiosk/**").permitAll()
                         .requestMatchers("/api/v1/pointage-codes/validate").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/prometheus", "/actuator/metrics/**").hasRole("SUPERADMIN")
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/superadmin/**").hasRole("SUPERADMIN")
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();

@@ -16,6 +16,9 @@ public class PromoCode {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false, unique = true, length = 50)
     private String code;
 

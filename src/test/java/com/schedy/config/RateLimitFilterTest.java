@@ -1,6 +1,5 @@
 package com.schedy.config;
 
-import io.github.bucket4j.Bucket;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -41,7 +40,7 @@ class RateLimitFilterTest {
             filter.doFilterInternal(req, new MockHttpServletResponse(), chain);
 
             @SuppressWarnings("unchecked")
-            Map<String, Bucket> buckets = (Map<String, Bucket>)
+            Map<String, ?> buckets = (Map<String, ?>)
                     ReflectionTestUtils.getField(filter, "kioskPinClockBuckets");
             assertThat(buckets).containsKey("192.168.1.10");
         }
@@ -119,18 +118,77 @@ class RateLimitFilterTest {
         }
 
         @Test
-        @DisplayName("evictBuckets() clears pin-clock bucket map")
-        void evictBuckets_clearsAllMaps() throws Exception {
+        @DisplayName("evictBuckets() keeps recently-active buckets (no bypass window)")
+        void evictBuckets_keepsRecentBuckets() throws Exception {
+            // Create a bucket with a request just now
             MockHttpServletRequest req = new MockHttpServletRequest("POST",
                     "/api/v1/pointage-codes/kiosk/pin-clock");
             req.setRemoteAddr("5.5.5.5");
             filter.doFilterInternal(req, new MockHttpServletResponse(), chain);
+
+            // Evict immediately -- bucket was accessed < 10 min ago, must survive
             filter.evictBuckets();
 
             @SuppressWarnings("unchecked")
-            Map<String, Bucket> after = (Map<String, Bucket>)
+            Map<String, ?> after = (Map<String, ?>)
                     ReflectionTestUtils.getField(filter, "kioskPinClockBuckets");
-            assertThat(after).isEmpty();
+            assertThat(after).containsKey("5.5.5.5");
+        }
+
+        @Test
+        @DisplayName("evictBuckets() removes stale entries older than threshold")
+        void evictBuckets_removesStaleEntries() throws Exception {
+            // Create a bucket with a request
+            MockHttpServletRequest req = new MockHttpServletRequest("POST",
+                    "/api/v1/pointage-codes/kiosk/pin-clock");
+            req.setRemoteAddr("6.6.6.6");
+            filter.doFilterInternal(req, new MockHttpServletResponse(), chain);
+
+            // Artificially age the entry by setting lastAccessMillis to 11 minutes ago
+            @SuppressWarnings("unchecked")
+            Map<String, Object> buckets = (Map<String, Object>)
+                    ReflectionTestUtils.getField(filter, "kioskPinClockBuckets");
+            Object currentEntry = buckets.get("6.6.6.6");
+            // Use reflection to read the bucket from the record, then create an aged entry
+            java.lang.reflect.Method bucketMethod = currentEntry.getClass().getMethod("bucket");
+            Object bucket = bucketMethod.invoke(currentEntry);
+            // Create a new BucketEntry with an old timestamp via the record constructor
+            long elevenMinutesAgo = System.currentTimeMillis() - 660_000;
+            java.lang.reflect.Constructor<?> ctor = currentEntry.getClass()
+                    .getDeclaredConstructors()[0];
+            ctor.setAccessible(true);
+            Object agedEntry = ctor.newInstance(bucket, elevenMinutesAgo);
+            buckets.put("6.6.6.6", agedEntry);
+
+            // Now evict -- the aged entry should be removed
+            filter.evictBuckets();
+
+            assertThat(buckets).doesNotContainKey("6.6.6.6");
+        }
+
+        @Test
+        @DisplayName("evictBuckets() does not reset rate limit for active attacker")
+        void evictBuckets_doesNotResetActiveAttacker() throws Exception {
+            String attackerIp = "7.7.7.7";
+
+            // Exhaust all 5 pin-clock tokens
+            for (int i = 0; i < 5; i++) {
+                MockHttpServletRequest req = new MockHttpServletRequest("POST",
+                        "/api/v1/pointage-codes/kiosk/pin-clock");
+                req.setRemoteAddr(attackerIp);
+                filter.doFilterInternal(req, new MockHttpServletResponse(), chain);
+            }
+
+            // Evict -- active bucket must survive (last access was just now)
+            filter.evictBuckets();
+
+            // 6th request must still be blocked -- the depleted bucket was NOT cleared
+            MockHttpServletRequest blocked = new MockHttpServletRequest("POST",
+                    "/api/v1/pointage-codes/kiosk/pin-clock");
+            blocked.setRemoteAddr(attackerIp);
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            filter.doFilterInternal(blocked, res, chain);
+            assertThat(res.getStatus()).isEqualTo(429);
         }
     }
 }

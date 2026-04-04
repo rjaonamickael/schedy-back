@@ -90,15 +90,7 @@ public class EmployeController {
         return ResponseEntity.ok(java.util.Map.of("pin", pin));
     }
 
-    @GetMapping("/role/{role}")
-    public ResponseEntity<List<EmployeResponse>> findByRole(@PathVariable String role) {
-        return ResponseEntity.ok(employeService.findByRole(role).stream().map(EmployeResponse::from).toList());
-    }
-
-    @GetMapping("/site/{siteId}")
-    public ResponseEntity<List<EmployeResponse>> findBySiteId(@PathVariable String siteId) {
-        return ResponseEntity.ok(employeService.findBySiteId(siteId).stream().map(EmployeResponse::from).toList());
-    }
+    // Dead endpoints /role/{role} and /site/{siteId} removed — frontend uses /all with client-side filtering
 
     @PostMapping("/find-by-pin")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")

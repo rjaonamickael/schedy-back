@@ -127,8 +127,15 @@ public class AuthController {
         validatePendingToken(pendingToken);
 
         String email = jwtUtil.extractEmail(pendingToken);
-        // Try TOTP app code first, then email code
-        if (totpService.verify(email, code) || authService.verifyEmail2faCode(email, code)) {
+        // S-06: Try TOTP app code first. If TOTP succeeds, clear the outstanding
+        // email code so it cannot be reused as a separate auth path.
+        if (totpService.verify(email, code)) {
+            authService.clearEmail2faCode(email);
+            return ResponseEntity.ok(authService.completeLogin(email));
+        }
+        // Fall back to email code verification (email code is cleared on success
+        // inside verifyEmail2faCode itself).
+        if (authService.verifyEmail2faCode(email, code)) {
             return ResponseEntity.ok(authService.completeLogin(email));
         }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,

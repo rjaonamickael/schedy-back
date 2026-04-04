@@ -11,11 +11,12 @@ public record SubscriptionResponse(
         String organisationId,
         PlanTier planTier,
         SubscriptionStatus status,
-        int maxEmployees,
-        int maxSites,
+        Integer maxEmployees,
+        Integer maxSites,
         OffsetDateTime trialEndsAt,
         String promoCodeId,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt
 ) {
     public static SubscriptionResponse from(Subscription entity) {
         return new SubscriptionResponse(
@@ -27,7 +28,8 @@ public record SubscriptionResponse(
                 entity.getMaxSites(),
                 entity.getTrialEndsAt(),
                 entity.getPromoCodeId(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
         );
     }
 }

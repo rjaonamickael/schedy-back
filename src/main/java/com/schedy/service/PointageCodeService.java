@@ -23,8 +23,10 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -329,32 +331,57 @@ public class PointageCodeService {
         return employes.size();
     }
 
+    /**
+     * Generates a unique 8-character alphanumeric code using a batch approach (B-15).
+     * Produces 5 candidates per round, checks all hashes in a single IN query, and picks
+     * the first candidate not already in use. Max 3 rounds (15 candidates) before failing.
+     */
     private String generateUniqueCode() {
-        String code;
-        int attempts = 0;
-        do {
-            code = generateRandomCode(8);
-            attempts++;
-            if (attempts > 100) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Unable to generate unique code after 100 attempts");
+        final int BATCH_SIZE = 5;
+        final int MAX_ROUNDS = 3;
+        for (int round = 0; round < MAX_ROUNDS; round++) {
+            List<String> candidates = new ArrayList<>(BATCH_SIZE);
+            for (int i = 0; i < BATCH_SIZE; i++) {
+                candidates.add(generateRandomCode(8));
             }
-        } while (pointageCodeRepository.existsByCodeAndActifTrue(code));
-        return code;
+            Set<String> existing = Set.copyOf(pointageCodeRepository.findExistingCodes(candidates));
+            for (String candidate : candidates) {
+                if (!existing.contains(candidate)) {
+                    return candidate;
+                }
+            }
+            log.warn("All {} code candidates in round {} collided; retrying", BATCH_SIZE, round + 1);
+        }
+        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Unable to generate unique code after " + (MAX_ROUNDS * BATCH_SIZE) + " attempts");
     }
 
+    /**
+     * Generates a unique 6-digit PIN using a batch approach (B-15).
+     * Produces 5 candidates per round, checks all SHA-256 hashes in a single IN query, and picks
+     * the first candidate whose hash is not already in use. Max 3 rounds (15 candidates) before failing.
+     */
     private String generateUniquePin() {
-        String pin;
-        int attempts = 0;
-        do {
-            pin = generateRandomPin(6);
-            attempts++;
-            if (attempts > 100) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Unable to generate unique PIN after 100 attempts");
+        final int BATCH_SIZE = 5;
+        final int MAX_ROUNDS = 3;
+        for (int round = 0; round < MAX_ROUNDS; round++) {
+            List<String> candidates = new ArrayList<>(BATCH_SIZE);
+            for (int i = 0; i < BATCH_SIZE; i++) {
+                candidates.add(generateRandomPin(6));
             }
-        } while (pointageCodeRepository.existsByPinHashAndActifTrue(CryptoUtil.sha256(pin)));
-        return pin;
+            List<String> candidateHashes = candidates.stream()
+                    .map(CryptoUtil::sha256)
+                    .toList();
+            Set<String> existingHashes = Set.copyOf(pointageCodeRepository.findExistingPinHashes(candidateHashes));
+            for (String candidate : candidates) {
+                if (!existingHashes.contains(CryptoUtil.sha256(candidate))) {
+                    return candidate;
+                }
+            }
+            log.warn("All {} PIN candidates in round {} collided; retrying", BATCH_SIZE, round + 1);
+        }
+        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Unable to generate unique PIN after " + (MAX_ROUNDS * BATCH_SIZE) + " attempts");
     }
 
     private String generateRandomCode(int length) {
@@ -374,11 +401,18 @@ public class PointageCodeService {
     }
 
     private PointageCodeDto toDto(PointageCode pc) {
+        String decryptedPin;
+        try {
+            decryptedPin = pinEncryptionUtil.decrypt(pc.getPin());
+        } catch (Exception e) {
+            log.error("Failed to decrypt PIN for code {}: {}", pc.getId(), e.getMessage());
+            decryptedPin = null;
+        }
         return new PointageCodeDto(
                 pc.getId(),
                 pc.getSiteId(),
                 pc.getCode(),
-                pc.getPin(),
+                decryptedPin,
                 pc.getRotationValeur(),
                 pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),

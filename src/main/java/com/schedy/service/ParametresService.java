@@ -149,7 +149,7 @@ public class ParametresService {
     public static class ParametresCacheStore {
 
         @Cacheable(value = "parametres", key = "#orgId")
-        @Transactional(readOnly = true)
+        @Transactional
         public Parametres getForOrg(String orgId, ParametresRepository repo) {
             return repo.findBySiteIdIsNullAndOrganisationId(orgId)
                     .orElseGet(() -> {
@@ -171,7 +171,7 @@ public class ParametresService {
         }
 
         @Cacheable(value = "parametres", key = "#orgId + ':' + #siteId")
-        @Transactional(readOnly = true)
+        @Transactional
         public Parametres getBySiteForOrg(String siteId, String orgId, ParametresRepository repo) {
             Optional<Parametres> bySite = repo.findBySiteIdAndOrganisationId(siteId, orgId);
             // Fall back to org-level parametres if no site-specific entry exists.
@@ -196,9 +196,10 @@ public class ParametresService {
             );
         }
 
-        @CacheEvict(value = "parametres", allEntries = true)
+        @CacheEvict(value = "parametres", key = "#orgId")
         public void evictOrg(String orgId) {
-            // Evict ALL parametres entries — org-level update may affect site-level fallback cache
+            // Evicts the org-level cache entry keyed by orgId.
+            // Site-level fallback entries (key="#orgId + ':' + siteId") are handled by evictSite.
         }
 
         @CacheEvict(value = "parametres", key = "#orgId + ':' + #siteId")

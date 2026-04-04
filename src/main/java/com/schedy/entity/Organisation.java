@@ -11,6 +11,9 @@ import java.time.OffsetDateTime;
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Organisation {
 
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_SUSPENDED = "SUSPENDED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;

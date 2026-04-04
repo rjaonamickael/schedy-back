@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 public record ImpersonationLogResponse(
         String id,
         String superadminEmail,
-        String organisationId,
+        String targetOrgId,
         String organisationName,
         String reason,
         String ipAddress,

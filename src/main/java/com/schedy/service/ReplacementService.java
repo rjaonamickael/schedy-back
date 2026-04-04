@@ -50,7 +50,8 @@ public class ReplacementService {
         String semaine = creneau.getSemaine();
 
         // Charger toutes les données nécessaires en amont (open-in-view=false)
-        List<Employe> tousEmployes = employeRepo.findByOrganisationId(orgId);
+        // HIGH-02: scope to the creneau's site instead of loading all org employees.
+        List<Employe> tousEmployes = employeRepo.findBySiteIdsContainingAndOrganisationId(creneau.getSiteId(), orgId);
 
         // Récupérer le rôle de l'employé absent pour scorer les remplaçants par correspondance de rôle
         String absentRole = tousEmployes.stream()
@@ -69,8 +70,10 @@ public class ReplacementService {
                 .stream()
                 .filter(c -> !c.getId().equals(creneauExcluId))
                 .collect(Collectors.toList());
+        // HIGH-02: filter leaves by date at the DB level instead of loading all approved leaves.
         List<DemandeConge> congesApprouves = demandeCongeRepo
-                .findByOrganisationIdAndStatut(orgId, StatutDemande.approuve);
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        orgId, StatutDemande.approuve, dateCreneau, dateCreneau);
         List<JourFerie> feries = jourFerieRepo.findByOrganisationId(orgId);
         Set<String> absentsDuJour = absenceRepo
                 .findByOrganisationIdAndDateAbsence(orgId, dateCreneau)

@@ -441,8 +441,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public List<AdminUserResponse> listAdminUsers() {
         String orgId = getCurrentOrgId();
-        return userRepository.findAllByOrganisationId(orgId).stream()
-                .filter(u -> u.getRole() == User.UserRole.ADMIN)
+        return userRepository.findByOrganisationIdAndRole(orgId, User.UserRole.ADMIN).stream()
                 .map(u -> new AdminUserResponse(u.getId(), u.getEmail(), u.getRole().name(), u.getNom(), u.isPasswordSet(), u.getEmployeId()))
                 .toList();
     }
@@ -585,6 +584,21 @@ public class AuthService {
             userRepository.save(user);
         }
         return valid;
+    }
+
+    /**
+     * Clears any outstanding email 2FA code for the given user.
+     * Called after a successful TOTP verification so the email code
+     * cannot be reused as an alternate authentication path (S-06).
+     */
+    @Transactional
+    public void clearEmail2faCode(String email) {
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user != null && user.getEmail2faCodeHash() != null) {
+            user.setEmail2faCodeHash(null);
+            user.setEmail2faCodeExpiresAt(null);
+            userRepository.save(user);
+        }
     }
 
     /**

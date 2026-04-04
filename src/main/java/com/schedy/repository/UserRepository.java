@@ -17,6 +17,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByRefreshToken(String refreshToken);
     Optional<User> findByEmployeId(String employeId);
     List<User> findAllByOrganisationId(String organisationId);
+    List<User> findByOrganisationIdAndRole(String organisationId, User.UserRole role);
     long countByOrganisationId(String organisationId);
 
     @Query("SELECT u.organisationId, COUNT(u) FROM User u WHERE u.organisationId IN :orgIds GROUP BY u.organisationId")

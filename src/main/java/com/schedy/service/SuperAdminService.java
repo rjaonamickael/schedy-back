@@ -13,6 +13,8 @@ import com.schedy.dto.response.SubscriptionResponse;
 import com.schedy.dto.response.SuperAdminDashboardResponse;
 import com.schedy.entity.*;
 import com.schedy.repository.*;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import com.schedy.util.CryptoUtil;
 import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
@@ -76,8 +78,8 @@ public class SuperAdminService {
     @Transactional(readOnly = true)
     public SuperAdminDashboardResponse getDashboard() {
         long totalOrgs       = organisationRepository.count();
-        long activeOrgs      = organisationRepository.countByStatus("ACTIVE");
-        long suspendedOrgs   = organisationRepository.countByStatus("SUSPENDED");
+        long activeOrgs      = organisationRepository.countByStatus(Organisation.STATUS_ACTIVE);
+        long suspendedOrgs   = organisationRepository.countByStatus(Organisation.STATUS_SUSPENDED);
         long totalUsers      = userRepository.count();
         long totalEmployees  = employeRepository.count();
 
@@ -322,8 +324,8 @@ public class SuperAdminService {
         if (dto.planTier() != null) {
             sub.setPlanTier(Subscription.PlanTier.valueOf(dto.planTier().toUpperCase()));
         }
-        sub.setMaxEmployees(dto.maxEmployees() > 0 ? dto.maxEmployees() : sub.getMaxEmployees());
-        sub.setMaxSites(dto.maxSites() > 0 ? dto.maxSites() : sub.getMaxSites());
+        if (dto.maxEmployees() != null && dto.maxEmployees() > 0) sub.setMaxEmployees(dto.maxEmployees());
+        if (dto.maxSites() != null && dto.maxSites() > 0) sub.setMaxSites(dto.maxSites());
         if (dto.trialEndsAt() != null) {
             sub.setTrialEndsAt(dto.trialEndsAt());
         }
@@ -577,6 +579,7 @@ public class SuperAdminService {
     // PLAN TEMPLATES
     // =========================================================================
 
+    @Cacheable("planTemplates")
     @Transactional(readOnly = true)
     public List<PlanTemplateResponse> findAllPlanTemplates() {
         return planTemplateRepository.findAllByOrderBySortOrderAsc()
@@ -591,6 +594,7 @@ public class SuperAdminService {
         return PlanTemplateResponse.from(template);
     }
 
+    @CacheEvict(value = "planTemplates", allEntries = true)
     @Transactional
     public PlanTemplateResponse createPlanTemplate(PlanTemplateDto dto) {
         String normalizedCode = dto.code().toUpperCase();
@@ -616,6 +620,7 @@ public class SuperAdminService {
         return PlanTemplateResponse.from(template);
     }
 
+    @CacheEvict(value = "planTemplates", allEntries = true)
     @Transactional
     public PlanTemplateResponse updatePlanTemplate(String id, PlanTemplateDto dto) {
         PlanTemplate template = requirePlanTemplate(id);
@@ -649,6 +654,7 @@ public class SuperAdminService {
         return PlanTemplateResponse.from(template);
     }
 
+    @CacheEvict(value = "planTemplates", allEntries = true)
     @Transactional
     public void deletePlanTemplate(String id) {
         PlanTemplate template = requirePlanTemplate(id);
