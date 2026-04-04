@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -119,39 +120,44 @@ class PointageCodeServiceTest {
     class GenerateUniquePinSecurity {
 
         @Test
-        @DisplayName("calls existsByPinHashAndActifTrue, never existsByPinAndActifTrue")
+        @DisplayName("calls findExistingPinHashes (batch), never existsByPinAndActifTrue")
         void generateNewCode_callsPinHashCheck() {
             when(pointageCodeRepository
                     .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
                     .thenReturn(Optional.empty());
-            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
-            when(pointageCodeRepository.existsByPinHashAndActifTrue(anyString())).thenReturn(false);
+            // Batch approach: no collisions — return empty list for both checks
+            when(pointageCodeRepository.findExistingPinHashes(anyList())).thenReturn(List.of());
+            when(pointageCodeRepository.findExistingCodes(anyList())).thenReturn(List.of());
             when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
                     .thenReturn(List.of());
             when(pointageCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
 
-            verify(pointageCodeRepository, atLeastOnce()).existsByPinHashAndActifTrue(anyString());
+            verify(pointageCodeRepository, atLeastOnce()).findExistingPinHashes(anyList());
             verify(pointageCodeRepository, never()).existsByPinAndActifTrue(anyString());
         }
 
         @Test
-        @DisplayName("hash passed is valid 64-char SHA-256 hex")
+        @DisplayName("hashes passed to findExistingPinHashes are valid 64-char SHA-256 hex")
         void generateNewCode_passesSha256Hex() {
             when(pointageCodeRepository
                     .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
                     .thenReturn(Optional.empty());
-            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
-            ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
-            when(pointageCodeRepository.existsByPinHashAndActifTrue(hashCaptor.capture())).thenReturn(false);
+            when(pointageCodeRepository.findExistingCodes(anyList())).thenReturn(List.of());
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<String>> hashListCaptor = ArgumentCaptor.forClass(List.class);
+            when(pointageCodeRepository.findExistingPinHashes(hashListCaptor.capture())).thenReturn(List.of());
             when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
                     .thenReturn(List.of());
             when(pointageCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             pointageCodeService.getOrCreateForSite(SITE_ID, 1, UniteRotation.JOURS);
 
-            assertThat(hashCaptor.getValue()).hasSize(64).matches("[0-9a-f]{64}");
+            List<String> capturedHashes = hashListCaptor.getValue();
+            assertThat(capturedHashes).isNotEmpty();
+            capturedHashes.forEach(hash ->
+                    assertThat(hash).hasSize(64).matches("[0-9a-f]{64}"));
         }
 
         @Test
@@ -160,8 +166,8 @@ class PointageCodeServiceTest {
             when(pointageCodeRepository
                     .findFirstBySiteIdAndActifTrueAndOrganisationIdOrderByValidFromDesc(SITE_ID, ORG_ID))
                     .thenReturn(Optional.empty());
-            when(pointageCodeRepository.existsByCodeAndActifTrue(anyString())).thenReturn(false);
-            when(pointageCodeRepository.existsByPinHashAndActifTrue(anyString())).thenReturn(false);
+            when(pointageCodeRepository.findExistingPinHashes(anyList())).thenReturn(List.of());
+            when(pointageCodeRepository.findExistingCodes(anyList())).thenReturn(List.of());
             when(employeRepository.findBySiteIdsContainingAndOrganisationId(SITE_ID, ORG_ID))
                     .thenReturn(List.of());
             ArgumentCaptor<PointageCode> captor = ArgumentCaptor.forClass(PointageCode.class);

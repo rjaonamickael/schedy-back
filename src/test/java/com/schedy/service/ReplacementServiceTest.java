@@ -71,7 +71,9 @@ class ReplacementServiceTest {
         // Default: no existing creneaux, no absences, no holidays
         lenient().when(creneauRepo.findBySemaineAndOrganisationId(SEMAINE, ORG))
                 .thenReturn(new ArrayList<>(List.of(creneauAbsent)));
-        lenient().when(demandeCongeRepo.findByOrganisationIdAndStatut(ORG, StatutDemande.approuve))
+        lenient().when(demandeCongeRepo
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        eq(ORG), eq(StatutDemande.approuve), any(LocalDate.class), any(LocalDate.class)))
                 .thenReturn(List.of());
         lenient().when(jourFerieRepo.findByOrganisationId(ORG))
                 .thenReturn(List.of());
@@ -105,7 +107,8 @@ class ReplacementServiceTest {
     void cas_nominal_candidat_suggere() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe candidat = buildEmploye("c1", "Candidat", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, candidat));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, candidat));
 
         var result = service.findReplacements("creneau-absent");
 
@@ -123,7 +126,8 @@ class ReplacementServiceTest {
     void conge_jour_complet_exclu() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe enConge = buildEmploye("c1", "EnCongé", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, enConge));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, enConge));
 
         // Congé approuvé couvrant le lundi
         DemandeConge conge = DemandeConge.builder()
@@ -131,7 +135,9 @@ class ReplacementServiceTest {
                 .dateDebut(LUNDI).dateFin(LUNDI)
                 .duree(1.0).statut(StatutDemande.approuve)
                 .build();
-        when(demandeCongeRepo.findByOrganisationIdAndStatut(ORG, StatutDemande.approuve))
+        when(demandeCongeRepo
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        ORG, StatutDemande.approuve, LUNDI, LUNDI))
                 .thenReturn(List.of(conge));
 
         var result = service.findReplacements("creneau-absent");
@@ -146,7 +152,8 @@ class ReplacementServiceTest {
     void conge_partiel_chevauchant_exclu() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe enConge = buildEmploye("c1", "EnCongé", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, enConge));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, enConge));
 
         // Congé partiel lundi 10h-14h → chevauche créneau 8h-12h
         DemandeConge conge = DemandeConge.builder()
@@ -155,7 +162,9 @@ class ReplacementServiceTest {
                 .heureDebut(10.0).heureFin(14.0)
                 .duree(0.5).statut(StatutDemande.approuve)
                 .build();
-        when(demandeCongeRepo.findByOrganisationIdAndStatut(ORG, StatutDemande.approuve))
+        when(demandeCongeRepo
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        ORG, StatutDemande.approuve, LUNDI, LUNDI))
                 .thenReturn(List.of(conge));
 
         var result = service.findReplacements("creneau-absent");
@@ -170,7 +179,8 @@ class ReplacementServiceTest {
     void conge_partiel_hors_creneau_suggere() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe dispo = buildEmploye("c1", "Dispo", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, dispo));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, dispo));
 
         // Congé partiel lundi 14h-17h → PAS de chevauchement avec créneau 8h-12h
         DemandeConge conge = DemandeConge.builder()
@@ -179,7 +189,9 @@ class ReplacementServiceTest {
                 .heureDebut(14.0).heureFin(17.0)
                 .duree(0.5).statut(StatutDemande.approuve)
                 .build();
-        when(demandeCongeRepo.findByOrganisationIdAndStatut(ORG, StatutDemande.approuve))
+        when(demandeCongeRepo
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        ORG, StatutDemande.approuve, LUNDI, LUNDI))
                 .thenReturn(List.of(conge));
 
         var result = service.findReplacements("creneau-absent");
@@ -198,7 +210,8 @@ class ReplacementServiceTest {
     void jour_ferie_aucune_suggestion() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe candidat = buildEmploye("c1", "Candidat", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, candidat));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, candidat));
 
         // Lundi 2025-01-06 est férié
         JourFerie ferie = JourFerie.builder()
@@ -219,7 +232,8 @@ class ReplacementServiceTest {
     void jour_ferie_autre_site_pas_bloque() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe candidat = buildEmploye("c1", "Candidat", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, candidat));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, candidat));
 
         // Férié pour SITE_B uniquement
         JourFerie ferie = JourFerie.builder()
@@ -244,8 +258,10 @@ class ReplacementServiceTest {
     @DisplayName("site — employé d'un autre site exclu des suggestions")
     void site_autre_employe_exclu() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
-        Employe autreSite = buildEmploye("c1", "AutreSite", "caissier", SITE_B, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, autreSite));
+        // The site-scoped query returns only the absent employee for SITE_A;
+        // autreSite (SITE_B only) would not be returned by the real DB query.
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent));
 
         var result = service.findReplacements("creneau-absent");
 
@@ -264,7 +280,8 @@ class ReplacementServiceTest {
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
                 .build();
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, multiSite));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, multiSite));
 
         var result = service.findReplacements("creneau-absent");
 
@@ -281,7 +298,8 @@ class ReplacementServiceTest {
     void cap_hebdo_employe_exclu() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe surcharge = buildEmploye("c1", "Surchargé", "caissier", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, surcharge));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, surcharge));
 
         // c1 a déjà 45h cette semaine (jours 1-5 : 9h/jour = 45h)
         // + créneau absent 4h = 49h > 48h → exclu
@@ -315,7 +333,8 @@ class ReplacementServiceTest {
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
                 .build();
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, dejaAffecte));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, dejaAffecte));
 
         // c1 est déjà affecté lundi 8h-12h sur SITE_B
         List<CreneauAssigne> creneaux = new ArrayList<>(List.of(creneauAbsent));
@@ -342,7 +361,8 @@ class ReplacementServiceTest {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         // Disponible seulement l'après-midi, pas le matin
         Employe apremSeulement = buildEmploye("c1", "Aprem", "caissier", SITE_A, 0, 14.0, 18.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, apremSeulement));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, apremSeulement));
 
         var result = service.findReplacements("creneau-absent");
 
@@ -361,7 +381,8 @@ class ReplacementServiceTest {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe memeRole = buildEmploye("c1", "MêmeRôle", "caissier", SITE_A, 0, 8.0, 16.0);
         Employe autreRole = buildEmploye("c2", "AutreRôle", "serveur", SITE_A, 0, 8.0, 16.0);
-        when(employeRepo.findByOrganisationId(ORG)).thenReturn(List.of(absent, memeRole, autreRole));
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, memeRole, autreRole));
 
         var result = service.findReplacements("creneau-absent");
 
@@ -397,7 +418,9 @@ class ReplacementServiceTest {
         // c5 : OK → seul valide
         Employe valide = buildEmploye("c5", "Valide", "caissier", SITE_A, 0, 8.0, 16.0);
 
-        when(employeRepo.findByOrganisationId(ORG))
+        // The site-scoped query returns all employees on SITE_A; autreSite (SITE_B only) is
+        // excluded by the site membership filter inside the service stream.
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
                 .thenReturn(List.of(absent, enConge, autreSite, pasDispo, conflit, valide));
 
         // c1 en congé lundi
@@ -406,7 +429,9 @@ class ReplacementServiceTest {
                 .dateDebut(LUNDI).dateFin(LUNDI)
                 .duree(1.0).statut(StatutDemande.approuve)
                 .build();
-        when(demandeCongeRepo.findByOrganisationIdAndStatut(ORG, StatutDemande.approuve))
+        when(demandeCongeRepo
+                .findByOrganisationIdAndStatutAndDateFinGreaterThanEqualAndDateDebutLessThanEqual(
+                        ORG, StatutDemande.approuve, LUNDI, LUNDI))
                 .thenReturn(List.of(conge));
 
         // c4 déjà affecté lundi 8h-12h sur SITE_B

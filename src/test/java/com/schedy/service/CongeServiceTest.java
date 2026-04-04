@@ -214,7 +214,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -230,7 +230,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -252,7 +252,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -279,7 +279,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 0.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -310,7 +310,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 3.0, 2.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
@@ -414,9 +414,7 @@ class CongeServiceTest {
             BanqueConge banque = buildBanque(20.0, 5.0, 3.0);
             when(demandeCongeRepository.findByIdAndOrganisationId(DEMANDE_ID, ORG_ID))
                     .thenReturn(Optional.of(demande));
-            lenient().when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
-                    .thenReturn(Optional.of(banque));
-            lenient().when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
+            when(banqueCongeRepository.findByEmployeIdAndTypeCongeIdAndOrganisationId(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
 
             congeService.deleteDemande(DEMANDE_ID);
