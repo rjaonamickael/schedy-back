@@ -77,13 +77,24 @@ public class RegistrationRequestService {
 
         entity = registrationRequestRepository.save(entity);
 
-        // Confirmation email — best-effort, never blocks the response
+        // Confirmation email to organisation — best-effort, never blocks the response
         try {
             boolean isFrench = LocaleUtils.isFrenchSpeaking(dto.pays());
             emailService.sendRegistrationRequestConfirmation(
                     dto.contactEmail(), dto.contactName(), dto.organisationName(), isFrench);
         } catch (Exception e) {
             log.error("Failed to send registration confirmation email to {}: {}",
+                    dto.contactEmail(), e.getMessage());
+        }
+
+        // Internal CRM notification to contact@schedy.work — best-effort
+        try {
+            emailService.sendRegistrationRequestInternalNotification(
+                    dto.contactName(), dto.contactEmail(), dto.organisationName(),
+                    dto.pays(), dto.province(), dto.desiredPlan(),
+                    dto.employeeCount(), dto.billingCycle(), dto.message());
+        } catch (Exception e) {
+            log.error("Failed to send internal CRM notification for {}: {}",
                     dto.contactEmail(), e.getMessage());
         }
 

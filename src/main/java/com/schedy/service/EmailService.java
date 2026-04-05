@@ -747,6 +747,79 @@ public class EmailService {
     }
 
     /**
+     * Internal CRM notification sent to contact@schedy.work when a new registration request
+     * is submitted. Contains all key details so the team can follow up quickly.
+     */
+    @Async
+    public void sendRegistrationRequestInternalNotification(
+            String contactName, String contactEmail, String orgName,
+            String pays, String province, String desiredPlan,
+            Integer employeeCount, String billingCycle, String message) {
+
+        String subject = "\uD83D\uDCE5 Nouvelle demande d\u2019inscription — " + orgName;
+        String year = String.valueOf(java.time.Year.now().getValue());
+        String nameSafe  = escapeHtml(contactName);
+        String emailSafe = escapeHtml(contactEmail);
+        String orgSafe   = escapeHtml(orgName);
+        String paysSafe  = escapeHtml(pays != null ? pays : "—");
+        String provSafe  = escapeHtml(province != null && !province.isBlank() ? province : "—");
+        String planSafe  = escapeHtml(desiredPlan != null ? desiredPlan : "—");
+        String empStr    = employeeCount != null ? String.valueOf(employeeCount) : "—";
+        String billSafe  = escapeHtml(billingCycle != null ? billingCycle : "—");
+        String msgSafe   = message != null && !message.isBlank() ? escapeHtml(message) : "—";
+
+        String rowStyle = "padding:6px 0;font-size:14px;color:#4B5563;border-bottom:1px solid #F3F4F6;";
+        String labelStyle = "font-weight:600;color:#1F2937;width:140px;vertical-align:top;";
+
+        String html = buildEmailShell(year,
+            "Nouvelle demande d\u2019inscription de " + orgSafe + " (" + emailSafe + ")")
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">"
+            + "Nouvelle demande d\u2019inscription</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Une nouvelle demande vient d\u2019\u00eatre soumise via le formulaire public.</p>\n"
+
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" "
+            + "style=\"border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;\">\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Organisation</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + orgSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Contact</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + nameSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Email</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">"
+            + "<a href=\"mailto:" + emailSafe + "\" style=\"color:#047857;\">" + emailSafe + "</a></td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Pays</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + paysSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Province</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + provSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Plan</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + planSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Employ\u00e9s</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + empStr + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Facturation</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + billSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "border-bottom:none;\">Message</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;border-bottom:none;\">" + msgSafe + "</td></tr>\n"
+
+            + "</table>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+
+        sendHtmlEmail("contact@schedy.work", subject, html);
+    }
+
+    /**
      * Sent to the prospective organisation contact when the superadmin rejects the request.
      * Bilingual (FR primary, EN secondary).
      */
