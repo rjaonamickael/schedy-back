@@ -68,6 +68,13 @@ public class RegistrationRequest {
     @Column(name = "billing_cycle", length = 20)
     private String billingCycle;
 
+    @Column(name = "certification_accepted", nullable = false)
+    @Builder.Default
+    private Boolean certificationAccepted = false;
+
+    @Column(name = "certification_accepted_at")
+    private OffsetDateTime certificationAcceptedAt;
+
     /** Estimated number of employees in the organisation */
     @Column(name = "employee_count")
     private Integer employeeCount;

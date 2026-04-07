@@ -44,6 +44,11 @@ public class RegistrationRequestService {
      */
     @Transactional
     public RegistrationRequestResponse submitRequest(RegistrationRequestDto dto) {
+        if (!Boolean.TRUE.equals(dto.certificationAccepted())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "La certification des informations est obligatoire.");
+        }
+
         if (registrationRequestRepository.existsByContactEmailAndStatus(
                 dto.contactEmail(), RequestStatus.PENDING)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -72,6 +77,8 @@ public class RegistrationRequestService {
                 .employeeCount(dto.employeeCount())
                 .message(dto.message())
                 .billingCycle(dto.billingCycle())
+                .certificationAccepted(Boolean.TRUE.equals(dto.certificationAccepted()))
+                .certificationAcceptedAt(Boolean.TRUE.equals(dto.certificationAccepted()) ? OffsetDateTime.now() : null)
                 .status(RequestStatus.PENDING)
                 .build();
 
@@ -188,6 +195,17 @@ public class RegistrationRequestService {
             throw new ResponseStatusException(rse.getStatusCode(),
                 "Impossible de créer l'organisation : " + rse.getReason());
         }
+
+        // Copy identification data from registration request to the new organisation
+        organisationRepository.findById(orgSummary.id()).ifPresent(org -> {
+            org.setProvince(request.getProvince());
+            org.setBusinessNumber(request.getBusinessNumber());
+            org.setProvincialId(request.getProvincialId());
+            org.setNif(request.getNif());
+            org.setStat(request.getStat());
+            org.setAdresse(request.getAdresse());
+            organisationRepository.save(org);
+        });
 
         request.setStatus(RequestStatus.APPROVED);
         request.setReviewedAt(OffsetDateTime.now());

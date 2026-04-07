@@ -31,6 +31,36 @@ public class Organisation {
     @Column(length = 3)
     private String pays;
 
+    // Added by V25 migration — organisation identification data
+    @Column(name = "province", length = 10)
+    private String province;
+
+    @Column(name = "business_number", length = 50)
+    private String businessNumber;
+
+    @Column(name = "provincial_id", length = 50)
+    private String provincialId;
+
+    @Column(name = "nif", length = 50)
+    private String nif;
+
+    @Column(name = "stat", length = 50)
+    private String stat;
+
+    // Added by V26 migration — superadmin verification workflow
+    @Column(name = "verification_status", length = 20, nullable = false)
+    @Builder.Default
+    private String verificationStatus = "UNVERIFIED";
+
+    @Column(name = "verified_by", length = 255)
+    private String verifiedBy;
+
+    @Column(name = "verified_at")
+    private OffsetDateTime verifiedAt;
+
+    @Column(name = "verification_note", columnDefinition = "TEXT")
+    private String verificationNote;
+
     // Added by V7 migration — platform-level metadata
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

@@ -6,6 +6,7 @@ import com.schedy.dto.response.AnnouncementResponse;
 import com.schedy.dto.response.FeatureFlagResponse;
 import com.schedy.dto.response.ImpersonateResponse;
 import com.schedy.dto.response.ImpersonationLogResponse;
+import com.schedy.dto.response.OrgIdentificationsResponse;
 import com.schedy.dto.response.OrgSummaryResponse;
 import com.schedy.dto.response.PlanTemplateResponse;
 import com.schedy.dto.response.PromoCodeResponse;
@@ -307,6 +308,61 @@ public class SuperAdminService {
         organisationRepository.save(org);
         log.info("SuperAdmin: organisation '{}' pays updated to '{}'", org.getNom(), pays);
         return toOrgSummary(org);
+    }
+
+    // =========================================================================
+    // IDENTIFICATIONS
+    // =========================================================================
+
+    @Transactional(readOnly = true)
+    public OrgIdentificationsResponse getOrgIdentifications(String orgId) {
+        Organisation org = requireOrg(orgId);
+        return new OrgIdentificationsResponse(
+            org.getId(), org.getNom(), org.getPays(),
+            org.getProvince(), org.getBusinessNumber(), org.getProvincialId(),
+            org.getNif(), org.getStat(),
+            org.getVerificationStatus(), org.getVerifiedBy(),
+            org.getVerifiedAt(), org.getVerificationNote()
+        );
+    }
+
+    @Transactional
+    public OrgIdentificationsResponse updateOrgIdentifications(String orgId, UpdateOrgIdentificationsRequest request) {
+        Organisation org = requireOrg(orgId);
+        org.setProvince(request.province());
+        org.setBusinessNumber(request.businessNumber());
+        org.setProvincialId(request.provincialId());
+        org.setNif(request.nif());
+        org.setStat(request.stat());
+        organisationRepository.save(org);
+        log.info("SuperAdmin: organisation '{}' identifications updated", org.getNom());
+        return new OrgIdentificationsResponse(
+            org.getId(), org.getNom(), org.getPays(),
+            org.getProvince(), org.getBusinessNumber(), org.getProvincialId(),
+            org.getNif(), org.getStat(),
+            org.getVerificationStatus(), org.getVerifiedBy(),
+            org.getVerifiedAt(), org.getVerificationNote()
+        );
+    }
+
+    @Transactional
+    public OrgIdentificationsResponse updateOrgVerificationStatus(
+            String orgId, String status, String note, String superadminEmail) {
+        Organisation org = requireOrg(orgId);
+        org.setVerificationStatus(status);
+        org.setVerifiedBy(superadminEmail);
+        org.setVerifiedAt(OffsetDateTime.now());
+        org.setVerificationNote(note);
+        organisationRepository.save(org);
+        log.info("SuperAdmin {}: organisation '{}' verification status set to '{}'",
+                superadminEmail, org.getNom(), status);
+        return new OrgIdentificationsResponse(
+            org.getId(), org.getNom(), org.getPays(),
+            org.getProvince(), org.getBusinessNumber(), org.getProvincialId(),
+            org.getNif(), org.getStat(),
+            org.getVerificationStatus(), org.getVerifiedBy(),
+            org.getVerifiedAt(), org.getVerificationNote()
+        );
     }
 
     // =========================================================================

@@ -76,6 +76,9 @@ public record RegistrationRequestDto(
     @Size(max = 50, message = "Le cycle de facturation ne peut pas depasser 50 caracteres.")
     @Pattern(regexp = "^(ANNUAL|MONTHLY)$",
              message = "Le cycle de facturation doit être 'ANNUAL' ou 'MONTHLY'.")
-    String billingCycle
+    String billingCycle,
+
+    /** Whether the applicant checked the legal certification checkbox */
+    Boolean certificationAccepted
 
 ) {}

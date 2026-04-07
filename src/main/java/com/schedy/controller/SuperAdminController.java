@@ -5,6 +5,7 @@ import com.schedy.dto.response.AnnouncementResponse;
 import com.schedy.dto.response.FeatureFlagResponse;
 import com.schedy.dto.response.ImpersonateResponse;
 import com.schedy.dto.response.ImpersonationLogResponse;
+import com.schedy.dto.response.OrgIdentificationsResponse;
 import com.schedy.dto.response.OrgSummaryResponse;
 import com.schedy.dto.response.PlanTemplateResponse;
 import com.schedy.dto.response.PromoCodeResponse;
@@ -124,6 +125,34 @@ public class SuperAdminController {
             @PathVariable String id,
             @RequestBody java.util.Map<String, String> body) {
         return ResponseEntity.ok(superAdminService.updateOrgPays(id, body.get("pays")));
+    }
+
+    // =========================================================================
+    // IDENTIFICATIONS
+    // =========================================================================
+
+    @GetMapping("/organisations/{id}/identifications")
+    public ResponseEntity<OrgIdentificationsResponse> getOrgIdentifications(@PathVariable String id) {
+        return ResponseEntity.ok(superAdminService.getOrgIdentifications(id));
+    }
+
+    @PutMapping("/organisations/{id}/identifications")
+    public ResponseEntity<OrgIdentificationsResponse> updateOrgIdentifications(
+            @PathVariable String id,
+            @RequestBody UpdateOrgIdentificationsRequest request) {
+        return ResponseEntity.ok(superAdminService.updateOrgIdentifications(id, request));
+    }
+
+    @PutMapping("/organisations/{id}/verification-status")
+    public ResponseEntity<OrgIdentificationsResponse> updateOrgVerificationStatus(
+            @PathVariable String id,
+            @RequestBody Map<String, String> body,
+            Authentication authentication) {
+        String status = body.getOrDefault("status", "UNVERIFIED");
+        String note = body.get("note");
+        String superadminEmail = authentication.getName();
+        return ResponseEntity.ok(
+            superAdminService.updateOrgVerificationStatus(id, status, note, superadminEmail));
     }
 
     // =========================================================================
