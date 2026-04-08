@@ -228,7 +228,7 @@ public class SuperAdminService {
             log.error("Failed to send admin invitation email to {}: {}", request.adminEmail(), e.getMessage());
         }
 
-        Subscription.PlanTier tier = Subscription.PlanTier.FREE;
+        Subscription.PlanTier tier = Subscription.PlanTier.ESSENTIALS;
         if (request.planTier() != null && !request.planTier().isBlank()) {
             try { tier = Subscription.PlanTier.valueOf(request.planTier().toUpperCase()); }
             catch (IllegalArgumentException ignored) {}

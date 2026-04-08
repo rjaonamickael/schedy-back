@@ -60,7 +60,7 @@ public class RegistrationRequest {
     @Column(name = "stat", length = 50)
     private String stat;
 
-    /** Desired subscription plan: "FREE", "PRO", or "CUSTOM" */
+    /** Desired subscription plan: "ESSENTIALS", "PRO", or "CUSTOM" */
     @Column(name = "desired_plan", length = 20)
     private String desiredPlan;
 

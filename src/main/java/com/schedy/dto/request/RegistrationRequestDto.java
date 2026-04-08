@@ -56,9 +56,9 @@ public record RegistrationRequestDto(
     @Size(max = 255, message = "Le STAT ne peut pas depasser 255 caracteres.")
     String stat,
 
-    @NotBlank(message = "Le plan souhaité est obligatoire.")
-    @Size(max = 50, message = "Le plan ne peut pas depasser 50 caracteres.")
-    @Pattern(regexp = "^(FREE|STARTER|PRO|CUSTOM)$", message = "Le plan doit être l'une des valeurs suivantes : FREE, STARTER, PRO, CUSTOM.")
+    @NotBlank(message = "Le forfait souhaité est obligatoire.")
+    @Size(max = 50, message = "Le forfait ne peut pas depasser 50 caracteres.")
+    @Pattern(regexp = "^(ESSENTIALS|STARTER|PRO|CUSTOM)$", message = "Le forfait doit être l'une des valeurs suivantes : ESSENTIALS, PRO, CUSTOM.")
     String desiredPlan,
 
     /** Estimated number of employees — informational only */

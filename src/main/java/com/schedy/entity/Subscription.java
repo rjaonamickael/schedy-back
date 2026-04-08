@@ -23,7 +23,7 @@ public class Subscription {
     @Enumerated(EnumType.STRING)
     @Column(name = "plan_tier", nullable = false)
     @Builder.Default
-    private PlanTier planTier = PlanTier.FREE;
+    private PlanTier planTier = PlanTier.ESSENTIALS;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -58,7 +58,7 @@ public class Subscription {
     }
 
     public enum PlanTier {
-        FREE, STARTER, PRO
+        ESSENTIALS, STARTER, PRO
     }
 
     public enum SubscriptionStatus {

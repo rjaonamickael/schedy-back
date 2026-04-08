@@ -81,7 +81,7 @@ class SuperAdminServiceTest {
         Subscription sub = Subscription.builder()
                 .id("sub-1")
                 .organisationId(ORG_ID)
-                .planTier(Subscription.PlanTier.FREE)
+                .planTier(Subscription.PlanTier.ESSENTIALS)
                 .maxEmployees(15)
                 .maxSites(1)
                 .build();
@@ -103,7 +103,7 @@ class SuperAdminServiceTest {
                     Optional.of(Organisation.builder().id(ORG_ID).nom("Acme").status("ACTIVE").pays("FR").build()));
             stubSubscription();
             OffsetDateTime trial = OffsetDateTime.now().plusDays(30);
-            SubscriptionDto dto = new SubscriptionDto("FREE", 0, 0, null, trial);
+            SubscriptionDto dto = new SubscriptionDto("ESSENTIALS", 0, 0, null, trial);
 
             ArgumentCaptor<Subscription> cap = ArgumentCaptor.forClass(Subscription.class);
             when(subscriptionRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -121,14 +121,14 @@ class SuperAdminServiceTest {
             OffsetDateTime existing = OffsetDateTime.now().plusDays(14);
             Subscription sub = Subscription.builder()
                     .id("sub-1").organisationId(ORG_ID)
-                    .planTier(Subscription.PlanTier.FREE)
+                    .planTier(Subscription.PlanTier.ESSENTIALS)
                     .maxEmployees(15).maxSites(1)
                     .trialEndsAt(existing).build();
             when(subscriptionRepository.findByOrganisationId(ORG_ID)).thenReturn(Optional.of(sub));
             ArgumentCaptor<Subscription> cap = ArgumentCaptor.forClass(Subscription.class);
             when(subscriptionRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
 
-            superAdminService.updateSubscription(ORG_ID, new SubscriptionDto("FREE", 0, 0, null, null));
+            superAdminService.updateSubscription(ORG_ID, new SubscriptionDto("ESSENTIALS", 0, 0, null, null));
 
             assertThat(cap.getValue().getTrialEndsAt()).isEqualTo(existing);
         }
@@ -357,7 +357,7 @@ class SuperAdminServiceTest {
 
             // B-05: grouped query — one row per PlanTier
             when(subscriptionRepository.countByPlanTierGrouped()).thenReturn(List.of(
-                    new Object[]{Subscription.PlanTier.FREE,    3L},
+                    new Object[]{Subscription.PlanTier.ESSENTIALS,    3L},
                     new Object[]{Subscription.PlanTier.STARTER, 1L},
                     new Object[]{Subscription.PlanTier.PRO,     1L}
             ));
@@ -419,7 +419,7 @@ class SuperAdminServiceTest {
 
             Map<String, Long> orgsByPlan = response.orgsByPlan();
             assertThat(orgsByPlan)
-                    .containsEntry("FREE",    3L)
+                    .containsEntry("ESSENTIALS",    3L)
                     .containsEntry("STARTER", 1L)
                     .containsEntry("PRO",     1L);
         }
@@ -499,7 +499,7 @@ class SuperAdminServiceTest {
             Subscription entity = Subscription.builder()
                     .id("sub-2")
                     .organisationId("org-2")
-                    .planTier(Subscription.PlanTier.FREE)
+                    .planTier(Subscription.PlanTier.ESSENTIALS)
                     .build();
 
             SubscriptionResponse response = SubscriptionResponse.from(entity);

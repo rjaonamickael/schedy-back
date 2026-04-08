@@ -26,6 +26,9 @@ public class EmailService {
     @Value("${spring.mail.from:no-reply@schedy.work}")
     private String fromAddress;
 
+    @Value("${schedy.mail.contact:contact@schedy.work}")
+    private String contactAddress;
+
     @Value("${schedy.frontend-url:http://localhost:4200}")
     private String frontendUrl;
 
@@ -720,7 +723,7 @@ public class EmailService {
             + "Notre \u00e9quipe va examiner votre dossier dans les <strong>2 \u00e0 5 jours ouvrables</strong>. "
             + "Vous recevrez une r\u00e9ponse par email d\u00e8s qu\u2019une d\u00e9cision aura \u00e9t\u00e9 prise.</p>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Si vous avez des questions, contactez-nous \u00e0 "
-            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
             + "</td></tr>\n"
 
             + "<tr><td style=\"padding:0 32px;\">"
@@ -738,7 +741,7 @@ public class EmailService {
             + "Our team will review your application within <strong>2 to 5 business days</strong>. "
             + "You will receive an email once a decision has been made.</p>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, reach us at "
-            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
             + "</td></tr>\n"
 
             + buildEmailFooter(year);
@@ -747,7 +750,7 @@ public class EmailService {
     }
 
     /**
-     * Internal CRM notification sent to contact@schedy.work when a new registration request
+     * Internal CRM notification sent to the configured contact address when a new registration request
      * is submitted. Contains all key details so the team can follow up quickly.
      */
     @Async
@@ -799,7 +802,7 @@ public class EmailService {
             + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Province</td>"
             + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + provSafe + "</td></tr>\n"
 
-            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Plan</td>"
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Forfait</td>"
             + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + planSafe + "</td></tr>\n"
 
             + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Employ\u00e9s</td>"
@@ -816,7 +819,7 @@ public class EmailService {
 
             + buildEmailFooter(year);
 
-        sendHtmlEmail("contact@schedy.work", subject, html);
+        sendHtmlEmail(contactAddress, subject, html);
     }
 
     /**
@@ -851,7 +854,7 @@ public class EmailService {
             + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
             + reasonSafe + "</p>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Pour toute question, contactez-nous \u00e0 "
-            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
             + "</td></tr>\n"
 
             + "<tr><td style=\"padding:0 32px;\">"
@@ -870,7 +873,7 @@ public class EmailService {
             + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
             + reasonSafe + "</p>\n"
             + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, please contact us at "
-            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
             + "</td></tr>\n"
 
             + buildEmailFooter(year);

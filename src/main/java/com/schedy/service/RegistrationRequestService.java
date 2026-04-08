@@ -284,11 +284,11 @@ public class RegistrationRequestService {
      * "CUSTOM" requests are treated as PRO until a bespoke plan is agreed.
      */
     private String resolvePlanTier(String desiredPlan) {
-        if (desiredPlan == null) return "FREE";
+        if (desiredPlan == null) return "ESSENTIALS";
         return switch (desiredPlan.toUpperCase()) {
             case "PRO", "STARTER" -> desiredPlan.toUpperCase();
             case "CUSTOM"         -> "PRO";
-            default               -> "FREE";
+            default               -> "ESSENTIALS";
         };
     }
 
