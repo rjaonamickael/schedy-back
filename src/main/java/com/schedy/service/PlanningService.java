@@ -78,16 +78,22 @@ public class PlanningService {
     @Transactional
     public CreneauAssigne create(CreneauAssigneDto dto) {
         String orgId = tenantContext.requireOrganisationId();
-        CreneauAssigne creneau = CreneauAssigne.builder()
-                .employeId(dto.employeId())
-                .jour(dto.jour())
-                .heureDebut(dto.heureDebut())
-                .heureFin(dto.heureFin())
-                .semaine(dto.semaine())
-                .siteId(dto.siteId())
-                .organisationId(orgId)
-                .build();
-        return creneauRepository.save(creneau);
+        // Idempotent vis-à-vis du doublon exact : si un créneau strictement
+        // identique existe déjà (cf. contrainte unique V28), on le renvoie tel
+        // quel au lieu de laisser éclater une DataIntegrityViolationException.
+        return creneauRepository.findExactMatch(
+                        orgId, dto.employeId(), dto.semaine(), dto.jour(),
+                        dto.siteId(), dto.heureDebut(), dto.heureFin())
+                .orElseGet(() -> creneauRepository.save(
+                        CreneauAssigne.builder()
+                                .employeId(dto.employeId())
+                                .jour(dto.jour())
+                                .heureDebut(dto.heureDebut())
+                                .heureFin(dto.heureFin())
+                                .semaine(dto.semaine())
+                                .siteId(dto.siteId())
+                                .organisationId(orgId)
+                                .build()));
     }
 
     @Transactional

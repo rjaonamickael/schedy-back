@@ -29,8 +29,9 @@ public class Parametres {
     @Builder.Default
     private List<Integer> joursActifs = new ArrayList<>();
 
+    // Convention 0-indexée alignée sur le frontend : 0=Lundi .. 6=Dimanche.
     @Builder.Default
-    private int premierJour = 1;
+    private int premierJour = 0;
 
     @Builder.Default
     private double dureeMinAffectation = 1.0;

@@ -54,8 +54,8 @@ public class ParametresService {
                             .siteId(siteId)
                             .heureDebut(6)
                             .heureFin(22)
-                            .joursActifs(List.of(1, 2, 3, 4, 5))
-                            .premierJour(1)
+                            .joursActifs(List.of(0, 1, 2, 3, 4))
+                            .premierJour(0)
                             .dureeMinAffectation(1.0)
                             .organisationId(orgId)
                             .build();
@@ -157,8 +157,8 @@ public class ParametresService {
                             Parametres defaults = Parametres.builder()
                                     .heureDebut(6)
                                     .heureFin(22)
-                                    .joursActifs(List.of(1, 2, 3, 4, 5))
-                                    .premierJour(1)
+                                    .joursActifs(List.of(0, 1, 2, 3, 4))
+                                    .premierJour(0)
                                     .dureeMinAffectation(1.0)
                                     .organisationId(orgId)
                                     .build();
@@ -183,8 +183,8 @@ public class ParametresService {
                             Parametres defaults = Parametres.builder()
                                     .heureDebut(6)
                                     .heureFin(22)
-                                    .joursActifs(List.of(1, 2, 3, 4, 5))
-                                    .premierJour(1)
+                                    .joursActifs(List.of(0, 1, 2, 3, 4))
+                                    .premierJour(0)
                                     .dureeMinAffectation(1.0)
                                     .organisationId(orgId)
                                     .build();

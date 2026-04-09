@@ -50,4 +50,26 @@ public interface CreneauAssigneRepository extends JpaRepository<CreneauAssigne, 
      */
     @Query("SELECT COUNT(c) FROM CreneauAssigne c WHERE c.employeId = :employeId AND c.organisationId = :orgId AND c.semaine > :semaine")
     long countFutureByEmployeIdAndOrganisationId(@Param("employeId") String employeId, @Param("orgId") String orgId, @Param("semaine") String semaine);
+
+    /**
+     * Find a creneau matching exactly the same (employé, semaine, jour, heures, site) tuple
+     * within an organisation. Used to make POST /creneaux idempotent and to avoid triggering
+     * the unique constraint (V28) when a client re-sends the same assignment.
+     */
+    @Query("SELECT c FROM CreneauAssigne c " +
+           "WHERE c.organisationId = :orgId " +
+           "  AND c.employeId = :employeId " +
+           "  AND c.semaine = :semaine " +
+           "  AND c.jour = :jour " +
+           "  AND c.siteId = :siteId " +
+           "  AND c.heureDebut = :heureDebut " +
+           "  AND c.heureFin = :heureFin")
+    Optional<CreneauAssigne> findExactMatch(
+            @Param("orgId") String orgId,
+            @Param("employeId") String employeId,
+            @Param("semaine") String semaine,
+            @Param("jour") int jour,
+            @Param("siteId") String siteId,
+            @Param("heureDebut") double heureDebut,
+            @Param("heureFin") double heureFin);
 }

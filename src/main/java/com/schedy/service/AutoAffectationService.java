@@ -86,7 +86,17 @@ public class AutoAffectationService {
         SolverResult result = solver.resoudre(ctx);
 
         // ── Batch-persist new creneaux ─────────────────────────
-        List<CreneauAssigne> persisted = creneauRepository.saveAll(result.nouveauxCreneaux());
+        // Défense contre la contrainte unique (V28) : on dédup par tuple exact
+        // (employé, semaine, jour, site, heures) pour éviter qu'un doublon
+        // produit par le solveur fasse éclater la transaction.
+        Map<String, CreneauAssigne> deduped = new LinkedHashMap<>();
+        for (CreneauAssigne c : result.nouveauxCreneaux()) {
+            String key = c.getOrganisationId() + "|" + c.getEmployeId() + "|" + c.getSemaine()
+                    + "|" + c.getJour() + "|" + c.getSiteId()
+                    + "|" + c.getHeureDebut() + "|" + c.getHeureFin();
+            deduped.putIfAbsent(key, c);
+        }
+        List<CreneauAssigne> persisted = creneauRepository.saveAll(deduped.values());
 
         // ── Return existing + newly saved creneaux ─────────────
         List<CreneauAssigne> tous = new ArrayList<>(creneauxExistants.size() + persisted.size());
