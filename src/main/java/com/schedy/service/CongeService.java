@@ -10,11 +10,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -217,14 +219,19 @@ public class CongeService {
     @Transactional(readOnly = true)
     public List<DemandeConge> findDemandesByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
+        // SEC-10: EMPLOYEE may only read their own demandes
+        checkOwnershipIfEmployee(employeId);
         return demandeCongeRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
     @Transactional(readOnly = true)
     public DemandeConge findDemandeById(String id) {
         String orgId = tenantContext.requireOrganisationId();
-        return demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
+        DemandeConge demande = demandeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de conge", id));
+        // SEC-10: EMPLOYEE may only read their own demande (prevents IDOR enumeration)
+        checkOwnershipIfEmployee(demande.getEmployeId());
+        return demande;
     }
 
     @Transactional
@@ -502,5 +509,44 @@ public class CongeService {
         JourFerie ferie = jourFerieRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Jour ferie", id));
         jourFerieRepository.delete(ferie);
+    }
+
+    // ---- Ownership check (SEC-10 IDOR fix) ----
+
+    /**
+     * SEC-10: Enforces row-level ownership for the EMPLOYEE role.
+     *
+     * <p>ADMIN and MANAGER may read any demande in their organisation (tenant scoping
+     * already enforced upstream). EMPLOYEE may only read demandes that belong to
+     * themselves; any attempt to enumerate IDs and access another employee's data
+     * results in a 403 Forbidden response.
+     *
+     * <p>The check is intentionally lenient when no SecurityContext is present
+     * (e.g. unit tests that exercise the service without setting up authentication)
+     * — in that case the call is treated as a trusted internal invocation.
+     *
+     * @param targetEmployeId the employeId of the resource being accessed
+     * @throws ResponseStatusException 403 Forbidden if the caller is an EMPLOYEE
+     *         and {@code targetEmployeId} does not match their own employeId
+     */
+    private void checkOwnershipIfEmployee(String targetEmployeId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities() == null) {
+            return;
+        }
+        boolean isEmployee = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"));
+        if (!isEmployee) {
+            return;
+        }
+        // Caller is strictly an EMPLOYEE — verify ownership
+        String callerEmail = auth.getName();
+        String callerEmployeId = userRepository.findByEmail(callerEmail)
+                .map(User::getEmployeId)
+                .orElse(null);
+        if (callerEmployeId == null || !callerEmployeId.equals(targetEmployeId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Acces refuse: vous ne pouvez consulter que vos propres donnees");
+        }
     }
 }

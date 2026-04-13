@@ -1,9 +1,12 @@
 package com.schedy.config;
 
+import com.schedy.entity.User;
+import com.schedy.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -16,15 +19,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final TenantContext tenantContext;
+    private final UserRepository userRepository;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, @Lazy TenantContext tenantContext) {
+    public JwtAuthFilter(JwtUtil jwtUtil, @Lazy TenantContext tenantContext, UserRepository userRepository) {
         this.jwtUtil = jwtUtil;
         this.tenantContext = tenantContext;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -64,10 +70,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
                 // Store organisationId as request attribute for downstream services
-                // For impersonation tokens, also expose the impersonator claim for audit logging
                 request.setAttribute("organisationId", organisationId);
+
+                // SEC-05: For impersonation tokens, re-verify at request time that the
+                // impersonator still holds the SUPERADMIN role in the database.
+                // A SUPERADMIN demoted or deleted during the 30-minute token window
+                // must not be able to continue acting under an impersonation session.
+                // This adds one DB query per impersonated request, which is acceptable
+                // given the elevated sensitivity of impersonation actions.
                 String impersonator = jwtUtil.extractClaim(token, "impersonator");
                 if (impersonator != null) {
+                    User impersonatorUser = userRepository.findByEmail(impersonator).orElse(null);
+                    if (impersonatorUser == null || impersonatorUser.getRole() != User.UserRole.SUPERADMIN) {
+                        log.warn("SEC-05: impersonation token rejected — impersonator '{}' is no longer a SUPERADMIN", impersonator);
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json");
+                        response.getWriter().write("{\"error\":\"Impersonation token invalide (impersonator not a superadmin)\"}");
+                        SecurityContextHolder.clearContext();
+                        return;
+                    }
                     request.setAttribute("impersonator", impersonator);
                 }
             }

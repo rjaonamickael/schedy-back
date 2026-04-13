@@ -20,7 +20,6 @@ import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
-import com.schedy.util.LocaleUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -398,8 +397,7 @@ public class AuthService {
         userRepository.save(user);
 
         try {
-            boolean isFrench = resolveIsFrench(user.getOrganisationId());
-            emailService.sendPasswordResetEmail(user.getEmail(), user.getNom(), rawToken, isFrench);
+            emailService.sendPasswordResetEmail(user.getEmail(), user.getNom(), rawToken);
         } catch (Exception e) {
             log.error("Failed to send password reset email to {}: {}", user.getEmail(), e.getMessage());
         }
@@ -469,9 +467,8 @@ public class AuthService {
                 .build();
         userRepository.save(newAdmin);
         try {
-            boolean isFrench = resolveIsFrench(orgId);
             String orgName = organisationRepository.findById(orgId).map(o -> o.getNom()).orElse("Schedy");
-            emailService.sendAdminInvitationEmail(request.email(), orgName, rawToken, isFrench);
+            emailService.sendAdminInvitationEmail(request.email(), orgName, rawToken);
         } catch (Exception e) {
             log.error("Failed to send admin invitation to {}: {}", request.email(), e.getMessage());
         }
@@ -495,9 +492,8 @@ public class AuthService {
         user.setPasswordSet(false);
         userRepository.save(user);
         String orgName = organisationRepository.findById(orgId).map(o -> o.getNom()).orElse("Schedy");
-        boolean isFrench = resolveIsFrench(orgId);
         try {
-            emailService.sendAdminInvitationEmail(user.getEmail(), orgName, rawToken, isFrench);
+            emailService.sendAdminInvitationEmail(user.getEmail(), orgName, rawToken);
             log.info("Admin invitation resent to {} by {}", user.getEmail(),
                     SecurityContextHolder.getContext().getAuthentication().getName());
         } catch (Exception e) {
@@ -540,17 +536,6 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Aucune organisation associée");
         }
         return currentUser.getOrganisationId();
-    }
-
-    /**
-     * Returns true if the organisation's country code corresponds to a French-speaking country.
-     * Falls back to false when the organisation is not found or pays is null.
-     * Delegates to {@link LocaleUtils#isFrenchSpeaking(String)} for the actual locale check.
-     */
-    private boolean resolveIsFrench(String orgId) {
-        return organisationRepository.findById(orgId)
-                .map(org -> LocaleUtils.isFrenchSpeaking(org.getPays()))
-                .orElse(false);
     }
 
     /**

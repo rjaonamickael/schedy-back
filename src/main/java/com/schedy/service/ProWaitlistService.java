@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProWaitlistService {
 
     private final ProWaitlistRepository proWaitlistRepository;
+    private final EmailService emailService;
 
     /**
      * Registers an email address on the PRO waitlist.
@@ -47,6 +48,8 @@ public class ProWaitlistService {
 
         log.info("PRO waitlist: new sign-up — source={}, lang={}",
                 dto.source(), dto.language());
+
+        emailService.sendWaitlistConfirmationEmail(dto.email(), dto.language());
 
         return true;
     }

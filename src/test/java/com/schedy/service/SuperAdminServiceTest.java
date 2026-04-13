@@ -1,672 +1,534 @@
 package com.schedy.service;
 
-import com.schedy.config.JwtUtil;
-import com.schedy.dto.request.PromoCodeDto;
-import com.schedy.dto.request.SubscriptionDto;
-import com.schedy.dto.response.FeatureFlagResponse;
-import com.schedy.dto.response.ImpersonationLogResponse;
-import com.schedy.dto.response.PromoCodeResponse;
-import com.schedy.dto.response.SubscriptionResponse;
-import com.schedy.dto.response.SuperAdminDashboardResponse;
-import com.schedy.entity.AbsenceImprevue;
-import com.schedy.entity.DemandeConge;
-import com.schedy.entity.FeatureFlag;
-import com.schedy.entity.ImpersonationLog;
-import com.schedy.entity.Organisation;
-import com.schedy.entity.Pause;
+import com.schedy.dto.request.*;
+import com.schedy.dto.response.*;
 import com.schedy.entity.PromoCode;
-import com.schedy.entity.RegistrationRequest;
-import com.schedy.entity.Subscription;
-import com.schedy.repository.*;
-import jakarta.persistence.Version;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 
-import java.lang.reflect.Field;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * Thin facade test for SuperAdminService.
+ *
+ * SuperAdminService has NO business logic of its own — it only delegates to
+ * OrgAdminService, CommercialAdminService and PlatformAdminService.
+ * Each test verifies exactly one delegation: the right sub-service method is
+ * called with the right arguments, and the return value is passed through
+ * unchanged.
+ *
+ * Business logic is tested exhaustively in the sub-service test classes:
+ *   - OrgAdminServiceTest
+ *   - CommercialAdminServiceTest
+ *   - PlatformAdminServiceTest
+ */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("SuperAdminService unit tests (B-05, B-09, B-16, B-17, C-02, C-03)")
+@DisplayName("SuperAdminService — facade delegation tests")
 class SuperAdminServiceTest {
 
-    @Mock private OrganisationRepository organisationRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private EmployeRepository employeRepository;
-    @Mock private SubscriptionRepository subscriptionRepository;
-    @Mock private PromoCodeRepository promoCodeRepository;
-    @Mock private FeatureFlagRepository featureFlagRepository;
-    @Mock private PlatformAnnouncementRepository announcementRepository;
-    @Mock private ImpersonationLogRepository impersonationLogRepository;
-    @Mock private PointageRepository pointageRepository;
-    @Mock private PointageCodeRepository pointageCodeRepository;
-    @Mock private CreneauAssigneRepository creneauAssigneRepository;
-    @Mock private DemandeCongeRepository demandeCongeRepository;
-    @Mock private AbsenceImprevueRepository absenceImprevueRepository;
-    @Mock private PauseRepository pauseRepository;
-    @Mock private BanqueCongeRepository banqueCongeRepository;
-    @Mock private ExigenceRepository exigenceRepository;
-    @Mock private SiteRepository siteRepository;
-    @Mock private RoleRepository roleRepository;
-    @Mock private TypeCongeRepository typeCongeRepository;
-    @Mock private JourFerieRepository jourFerieRepository;
-    @Mock private ParametresRepository parametresRepository;
-    @Mock private PlanTemplateRepository planTemplateRepository;
-    @Mock private PasswordEncoder passwordEncoder;
-    @Mock private JwtUtil jwtUtil;
-    @Mock private EmailService emailService;
+    @Mock private OrgAdminService        orgAdminService;
+    @Mock private CommercialAdminService commercialAdminService;
+    @Mock private PlatformAdminService   platformAdminService;
 
     @InjectMocks private SuperAdminService superAdminService;
 
-    private static final String ORG_ID = "org-abc";
+    private static final String ORG_ID = "org-facade-1";
 
-    private Subscription stubSubscription() {
-        Subscription sub = Subscription.builder()
-                .id("sub-1")
-                .organisationId(ORG_ID)
-                .planTier(Subscription.PlanTier.ESSENTIALS)
-                .maxEmployees(15)
-                .maxSites(1)
-                .build();
-        lenient().when(subscriptionRepository.findByOrganisationId(ORG_ID)).thenReturn(Optional.of(sub));
-        lenient().when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
-        return sub;
-    }
-
-    // ── C-02 — updateSubscription: trialEndsAt ──
+    // ── Dashboard ─────────────────────────────────────────────────────────────
 
     @Nested
-    @DisplayName("updateSubscription() — C-02")
-    class UpdateSubscription {
-
-        @Test
-        @DisplayName("maps trialEndsAt to entity when non-null")
-        void setsTrialEndsAt() {
-            when(organisationRepository.findById(ORG_ID)).thenReturn(
-                    Optional.of(Organisation.builder().id(ORG_ID).nom("Acme").status("ACTIVE").pays("FR").build()));
-            stubSubscription();
-            OffsetDateTime trial = OffsetDateTime.now().plusDays(30);
-            SubscriptionDto dto = new SubscriptionDto("ESSENTIALS", 0, 0, null, trial);
-
-            ArgumentCaptor<Subscription> cap = ArgumentCaptor.forClass(Subscription.class);
-            when(subscriptionRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
-
-            superAdminService.updateSubscription(ORG_ID, dto);
-
-            assertThat(cap.getValue().getTrialEndsAt()).isEqualTo(trial);
-        }
-
-        @Test
-        @DisplayName("preserves existing trialEndsAt when DTO field is null")
-        void preservesExisting() {
-            when(organisationRepository.findById(ORG_ID)).thenReturn(
-                    Optional.of(Organisation.builder().id(ORG_ID).nom("Acme").status("ACTIVE").pays("FR").build()));
-            OffsetDateTime existing = OffsetDateTime.now().plusDays(14);
-            Subscription sub = Subscription.builder()
-                    .id("sub-1").organisationId(ORG_ID)
-                    .planTier(Subscription.PlanTier.ESSENTIALS)
-                    .maxEmployees(15).maxSites(1)
-                    .trialEndsAt(existing).build();
-            when(subscriptionRepository.findByOrganisationId(ORG_ID)).thenReturn(Optional.of(sub));
-            ArgumentCaptor<Subscription> cap = ArgumentCaptor.forClass(Subscription.class);
-            when(subscriptionRepository.save(cap.capture())).thenAnswer(inv -> inv.getArgument(0));
-
-            superAdminService.updateSubscription(ORG_ID, new SubscriptionDto("ESSENTIALS", 0, 0, null, null));
-
-            assertThat(cap.getValue().getTrialEndsAt()).isEqualTo(existing);
-        }
-    }
-
-    // ── C-03 — createPromoCode: active default ──
-
-    @Nested
-    @DisplayName("createPromoCode() — C-03")
-    class CreatePromoCode {
-
-        @Test
-        @DisplayName("defaults active to true when null")
-        void defaultsActiveTrue() {
-            when(promoCodeRepository.existsByCode("SUMMER50")).thenReturn(false);
-            when(promoCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            PromoCodeResponse result = superAdminService.createPromoCode(
-                    new PromoCodeDto("SUMMER50", "Summer", 50, null, null, null, null, null, null));
-
-            assertThat(result.active()).isTrue();
-        }
-
-        @Test
-        @DisplayName("respects explicit active = false")
-        void respectsExplicitFalse() {
-            when(promoCodeRepository.existsByCode("OFF10")).thenReturn(false);
-            when(promoCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            PromoCodeResponse result = superAdminService.createPromoCode(
-                    new PromoCodeDto("OFF10", "Disabled", 10, null, null, null, null, null, false));
-
-            assertThat(result.active()).isFalse();
-        }
-    }
-
-    // ── C-03 — updatePromoCode: soft-delete guard ──
-
-    @Nested
-    @DisplayName("updatePromoCode() — C-03")
-    class UpdatePromoCode {
-
-        @Test
-        @DisplayName("deactivates active code when active=false sent")
-        void deactivatesActiveCode() {
-            PromoCode promo = PromoCode.builder().id("p1").code("X").active(true).build();
-            when(promoCodeRepository.findById("p1")).thenReturn(Optional.of(promo));
-            when(promoCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            PromoCodeResponse result = superAdminService.updatePromoCode("p1",
-                    new PromoCodeDto("X", "d", null, null, null, null, null, null, false));
-
-            assertThat(result.active()).isFalse();
-        }
-
-        @Test
-        @DisplayName("reactivates soft-deleted code when active=true sent")
-        void reactivatesSoftDeleted() {
-            PromoCode promo = PromoCode.builder().id("p2").code("Y").active(false).build();
-            when(promoCodeRepository.findById("p2")).thenReturn(Optional.of(promo));
-            when(promoCodeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-            PromoCodeResponse result = superAdminService.updatePromoCode("p2",
-                    new PromoCodeDto("Y", "d", null, null, null, null, null, null, true));
-
-            assertThat(result.active()).isTrue();
-        }
-
-        @Test
-        @DisplayName("throws CONFLICT on soft-deleted code without active=true")
-        void rejectsUpdateOnSoftDeleted() {
-            PromoCode promo = PromoCode.builder().id("p3").code("Z").active(false).build();
-            when(promoCodeRepository.findById("p3")).thenReturn(Optional.of(promo));
-
-            assertThatThrownBy(() -> superAdminService.updatePromoCode("p3",
-                    new PromoCodeDto("Z", "d", null, null, null, null, null, null, null)))
-                    .isInstanceOf(ResponseStatusException.class)
-                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.CONFLICT);
-        }
-
-        @Test
-        @DisplayName("throws CONFLICT on soft-deleted code with active=false")
-        void rejectsUpdateWithActiveFalseOnSoftDeleted() {
-            PromoCode promo = PromoCode.builder().id("p4").code("W").active(false).build();
-            when(promoCodeRepository.findById("p4")).thenReturn(Optional.of(promo));
-
-            assertThatThrownBy(() -> superAdminService.updatePromoCode("p4",
-                    new PromoCodeDto("W", "d", null, null, null, null, null, null, false)))
-                    .isInstanceOf(ResponseStatusException.class)
-                    .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-                    .isEqualTo(HttpStatus.CONFLICT);
-        }
-    }
-
-    // ── B-09 — deleteOrganisation: cascade order ──────────────────────────────
-
-    @Nested
-    @DisplayName("deleteOrganisation() — B-09 cascade delete order")
-    class DeleteOrganisation {
-
-        private Organisation stubOrg() {
-            Organisation org = Organisation.builder()
-                    .id(ORG_ID).nom("Acme").status("ACTIVE").pays("FR").build();
-            when(organisationRepository.findById(ORG_ID)).thenReturn(Optional.of(org));
-            return org;
-        }
-
-        @Test
-        @DisplayName("calls absenceImprevueRepository.deleteByOrganisationId")
-        void deletesAbsenceImprevues() {
-            stubOrg();
-
-            superAdminService.deleteOrganisation(ORG_ID);
-
-            verify(absenceImprevueRepository).deleteByOrganisationId(ORG_ID);
-        }
-
-        @Test
-        @DisplayName("calls pauseRepository.deleteByOrganisationId")
-        void deletesPauses() {
-            stubOrg();
-
-            superAdminService.deleteOrganisation(ORG_ID);
-
-            verify(pauseRepository).deleteByOrganisationId(ORG_ID);
-        }
-
-        @Test
-        @DisplayName("absenceImprevue and pause are deleted BEFORE employeRepository (dependency order)")
-        void absenceAndPauseDeletedBeforeEmploye() {
-            stubOrg();
-
-            superAdminService.deleteOrganisation(ORG_ID);
-
-            InOrder inOrder = inOrder(absenceImprevueRepository, pauseRepository, employeRepository);
-            inOrder.verify(absenceImprevueRepository).deleteByOrganisationId(ORG_ID);
-            inOrder.verify(pauseRepository).deleteByOrganisationId(ORG_ID);
-            inOrder.verify(employeRepository).deleteByOrganisationId(ORG_ID);
-        }
-    }
-
-    // ── B-17 — @Version on optimistic-lock entities ───────────────────────────
-
-    /**
-     * Helper that locates a field (declared on the class or any superclass)
-     * annotated with {@link Version} and typed as {@code Long}/{@code long}.
-     * Returns {@code null} if none is found.
-     */
-    private static Field findVersionField(Class<?> clazz) {
-        Class<?> cursor = clazz;
-        while (cursor != null && cursor != Object.class) {
-            for (Field f : cursor.getDeclaredFields()) {
-                if (f.isAnnotationPresent(Version.class)
-                        && (f.getType() == Long.class || f.getType() == long.class)) {
-                    return f;
-                }
-            }
-            cursor = cursor.getSuperclass();
-        }
-        return null;
-    }
-
-    @Nested
-    @DisplayName("@Version optimistic-lock field — B-17")
-    class EntityVersionAnnotation {
-
-        @Test
-        @DisplayName("DemandeConge has @Version Long version")
-        void demandeCongeHasVersion() {
-            Field versionField = findVersionField(DemandeConge.class);
-            assertThat(versionField)
-                    .as("DemandeConge must declare a Long field annotated with @Version")
-                    .isNotNull();
-            assertThat(versionField.getName()).isEqualTo("version");
-        }
-
-        @Test
-        @DisplayName("AbsenceImprevue has @Version Long version")
-        void absenceImprevueHasVersion() {
-            Field versionField = findVersionField(AbsenceImprevue.class);
-            assertThat(versionField)
-                    .as("AbsenceImprevue must declare a Long field annotated with @Version")
-                    .isNotNull();
-            assertThat(versionField.getName()).isEqualTo("version");
-        }
-
-        @Test
-        @DisplayName("Pause has @Version Long version")
-        void pauseHasVersion() {
-            Field versionField = findVersionField(Pause.class);
-            assertThat(versionField)
-                    .as("Pause must declare a Long field annotated with @Version")
-                    .isNotNull();
-            assertThat(versionField.getName()).isEqualTo("version");
-        }
-
-        @Test
-        @DisplayName("RegistrationRequest has @Version Long version")
-        void registrationRequestHasVersion() {
-            Field versionField = findVersionField(RegistrationRequest.class);
-            assertThat(versionField)
-                    .as("RegistrationRequest must declare a Long field annotated with @Version")
-                    .isNotNull();
-            assertThat(versionField.getName()).isEqualTo("version");
-        }
-    }
-
-    // ── B-05 — getDashboard: GROUP BY queries ─────────────────────────────────
-
-    @Nested
-    @DisplayName("getDashboard() — B-05 GROUP BY queries")
+    @DisplayName("getDashboard() — delegates to OrgAdminService")
     class GetDashboard {
 
-        /**
-         * Stubs the minimum set of repositories that getDashboard() calls.
-         * Returns a fixed set of grouped results covering the full enum range
-         * so the stream.collect() inside the service does not throw.
-         */
-        private void stubDashboardDependencies() {
-            when(organisationRepository.count()).thenReturn(5L);
-            when(organisationRepository.countByStatus("ACTIVE")).thenReturn(4L);
-            when(organisationRepository.countByStatus("SUSPENDED")).thenReturn(1L);
-            when(userRepository.count()).thenReturn(10L);
-            when(employeRepository.count()).thenReturn(30L);
-
-            // B-05: grouped query — one row per PlanTier
-            when(subscriptionRepository.countByPlanTierGrouped()).thenReturn(List.of(
-                    new Object[]{Subscription.PlanTier.ESSENTIALS,    3L},
-                    new Object[]{Subscription.PlanTier.STARTER, 1L},
-                    new Object[]{Subscription.PlanTier.PRO,     1L}
-            ));
-
-            // B-05: grouped query — one row per SubscriptionStatus
-            when(subscriptionRepository.countByStatusGrouped()).thenReturn(List.of(
-                    new Object[]{Subscription.SubscriptionStatus.TRIAL,     2L},
-                    new Object[]{Subscription.SubscriptionStatus.ACTIVE,    2L},
-                    new Object[]{Subscription.SubscriptionStatus.SUSPENDED, 1L}
-            ));
-        }
-
         @Test
-        @DisplayName("calls countByPlanTierGrouped() — not individual findByPlanTier per enum")
-        void usesPlanTierGroupedQuery() {
-            stubDashboardDependencies();
+        @DisplayName("delegates to orgAdminService.getDashboard() and returns its result")
+        void delegatesToOrgAdminService() {
+            SuperAdminDashboardResponse expected = new SuperAdminDashboardResponse(
+                    3L, 2L, 1L, 10L, 30L, Map.of("PRO", 1L), Map.of("ACTIVE", 2L));
+            when(orgAdminService.getDashboard()).thenReturn(expected);
 
-            superAdminService.getDashboard();
+            SuperAdminDashboardResponse result = superAdminService.getDashboard();
 
-            // B-05: must use the single GROUP BY query
-            verify(subscriptionRepository, times(1)).countByPlanTierGrouped();
-            // Must NOT fall back to per-enum individual queries
-            verify(subscriptionRepository, never()).findByPlanTier(any());
-        }
-
-        @Test
-        @DisplayName("calls countByStatusGrouped() — not individual findByStatus per enum")
-        void usesStatusGroupedQuery() {
-            stubDashboardDependencies();
-
-            superAdminService.getDashboard();
-
-            // B-05: must use the single GROUP BY query
-            verify(subscriptionRepository, times(1)).countByStatusGrouped();
-            // Must NOT fall back to per-enum individual queries
-            verify(subscriptionRepository, never()).findByStatus(any());
-        }
-
-        @Test
-        @DisplayName("returns correct aggregate counts from repositories")
-        void returnsCorrectAggregates() {
-            stubDashboardDependencies();
-
-            SuperAdminDashboardResponse response = superAdminService.getDashboard();
-
-            assertThat(response.totalOrganisations()).isEqualTo(5L);
-            assertThat(response.activeOrganisations()).isEqualTo(4L);
-            assertThat(response.suspendedOrganisations()).isEqualTo(1L);
-            assertThat(response.totalUsers()).isEqualTo(10L);
-            assertThat(response.totalEmployees()).isEqualTo(30L);
-        }
-
-        @Test
-        @DisplayName("orgsByPlan map contains all returned PlanTier keys")
-        void orgsByPlanMapIsPopulatedCorrectly() {
-            stubDashboardDependencies();
-
-            SuperAdminDashboardResponse response = superAdminService.getDashboard();
-
-            Map<String, Long> orgsByPlan = response.orgsByPlan();
-            assertThat(orgsByPlan)
-                    .containsEntry("ESSENTIALS",    3L)
-                    .containsEntry("STARTER", 1L)
-                    .containsEntry("PRO",     1L);
-        }
-
-        @Test
-        @DisplayName("orgsByStatus map contains all returned SubscriptionStatus keys")
-        void orgsByStatusMapIsPopulatedCorrectly() {
-            stubDashboardDependencies();
-
-            SuperAdminDashboardResponse response = superAdminService.getDashboard();
-
-            Map<String, Long> orgsByStatus = response.orgsByStatus();
-            assertThat(orgsByStatus)
-                    .containsEntry("TRIAL",     2L)
-                    .containsEntry("ACTIVE",    2L)
-                    .containsEntry("SUSPENDED", 1L);
-        }
-
-        @Test
-        @DisplayName("empty grouped results produce empty maps (no NPE)")
-        void emptyGroupedResultsProduceEmptyMaps() {
-            when(organisationRepository.count()).thenReturn(0L);
-            when(organisationRepository.countByStatus("ACTIVE")).thenReturn(0L);
-            when(organisationRepository.countByStatus("SUSPENDED")).thenReturn(0L);
-            when(userRepository.count()).thenReturn(0L);
-            when(employeRepository.count()).thenReturn(0L);
-            when(subscriptionRepository.countByPlanTierGrouped()).thenReturn(List.of());
-            when(subscriptionRepository.countByStatusGrouped()).thenReturn(List.of());
-
-            SuperAdminDashboardResponse response = superAdminService.getDashboard();
-
-            assertThat(response.orgsByPlan()).isEmpty();
-            assertThat(response.orgsByStatus()).isEmpty();
+            verify(orgAdminService).getDashboard();
+            assertThat(result).isSameAs(expected);
         }
     }
 
-    // ── B-16 — DTO from() factory mapping ────────────────────────────────────
+    // ── Organisation delegation ───────────────────────────────────────────────
 
     @Nested
-    @DisplayName("SubscriptionResponse.from() — B-16 DTO mapping")
-    class SubscriptionResponseMapping {
+    @DisplayName("Organisation methods — delegate to OrgAdminService")
+    class OrgDelegation {
 
         @Test
-        @DisplayName("maps all fields from entity to record")
-        void mapsAllFields() {
-            OffsetDateTime trial   = OffsetDateTime.now().plusDays(30);
-            OffsetDateTime created = OffsetDateTime.now().minusDays(1);
+        @DisplayName("findAllOrganisations delegates to orgAdminService")
+        void findAllOrganisationsDelegates() {
+            List<OrgSummaryResponse> expected = List.of(
+                    new OrgSummaryResponse(ORG_ID, "Acme", "ACTIVE", "PRO", "CAN", 5, 2,
+                            OffsetDateTime.now(), null));
+            when(orgAdminService.findAllOrganisations()).thenReturn(expected);
 
-            Subscription entity = Subscription.builder()
-                    .id("sub-1")
-                    .organisationId("org-1")
-                    .planTier(Subscription.PlanTier.STARTER)
-                    .status(Subscription.SubscriptionStatus.TRIAL)
-                    .maxEmployees(50)
-                    .maxSites(3)
-                    .trialEndsAt(trial)
-                    .promoCodeId("promo-abc")
-                    .createdAt(created)
-                    .build();
+            List<OrgSummaryResponse> result = superAdminService.findAllOrganisations();
 
-            SubscriptionResponse response = SubscriptionResponse.from(entity);
-
-            assertThat(response.id()).isEqualTo("sub-1");
-            assertThat(response.organisationId()).isEqualTo("org-1");
-            assertThat(response.planTier()).isEqualTo(Subscription.PlanTier.STARTER);
-            assertThat(response.status()).isEqualTo(Subscription.SubscriptionStatus.TRIAL);
-            assertThat(response.maxEmployees()).isEqualTo(50);
-            assertThat(response.maxSites()).isEqualTo(3);
-            assertThat(response.trialEndsAt()).isEqualTo(trial);
-            assertThat(response.promoCodeId()).isEqualTo("promo-abc");
-            assertThat(response.createdAt()).isEqualTo(created);
+            verify(orgAdminService).findAllOrganisations();
+            assertThat(result).isSameAs(expected);
         }
 
         @Test
-        @DisplayName("nullable fields (trialEndsAt, promoCodeId) map to null when absent")
-        void nullableFieldsMappedToNull() {
-            Subscription entity = Subscription.builder()
-                    .id("sub-2")
-                    .organisationId("org-2")
-                    .planTier(Subscription.PlanTier.ESSENTIALS)
-                    .build();
+        @DisplayName("findOrganisation delegates to orgAdminService with orgId")
+        void findOrganisationDelegates() {
+            OrgSummaryResponse expected = new OrgSummaryResponse(
+                    ORG_ID, "Acme", "ACTIVE", "PRO", "CAN", 5, 2, OffsetDateTime.now(), null);
+            when(orgAdminService.findOrganisation(ORG_ID)).thenReturn(expected);
 
-            SubscriptionResponse response = SubscriptionResponse.from(entity);
+            OrgSummaryResponse result = superAdminService.findOrganisation(ORG_ID);
 
-            assertThat(response.trialEndsAt()).isNull();
-            assertThat(response.promoCodeId()).isNull();
+            verify(orgAdminService).findOrganisation(ORG_ID);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("createOrganisation delegates to orgAdminService with request")
+        void createOrganisationDelegates() {
+            CreateOrgRequest request = new CreateOrgRequest("NewCo", "a@b.com", null, "CAN", "PRO");
+            OrgSummaryResponse expected = new OrgSummaryResponse(
+                    ORG_ID, "NewCo", "ACTIVE", "PRO", "CAN", 0, 1, OffsetDateTime.now(), null);
+            when(orgAdminService.createOrganisation(request)).thenReturn(expected);
+
+            OrgSummaryResponse result = superAdminService.createOrganisation(request);
+
+            verify(orgAdminService).createOrganisation(request);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("deleteOrganisation delegates to orgAdminService with orgId")
+        void deleteOrganisationDelegates() {
+            superAdminService.deleteOrganisation(ORG_ID);
+
+            verify(orgAdminService).deleteOrganisation(ORG_ID);
+            verifyNoInteractions(commercialAdminService, platformAdminService);
+        }
+
+        @Test
+        @DisplayName("updateOrgStatus delegates to orgAdminService with orgId and status")
+        void updateOrgStatusDelegates() {
+            OrgSummaryResponse expected = new OrgSummaryResponse(
+                    ORG_ID, "Co", "SUSPENDED", "ESSENTIALS", "CAN", 0, 0, OffsetDateTime.now(), null);
+            when(orgAdminService.updateOrgStatus(ORG_ID, "SUSPENDED")).thenReturn(expected);
+
+            OrgSummaryResponse result = superAdminService.updateOrgStatus(ORG_ID, "SUSPENDED");
+
+            verify(orgAdminService).updateOrgStatus(ORG_ID, "SUSPENDED");
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("updateOrgPays delegates to orgAdminService with orgId and pays")
+        void updateOrgPaysDelegates() {
+            OrgSummaryResponse expected = new OrgSummaryResponse(
+                    ORG_ID, "Co", "ACTIVE", "ESSENTIALS", "MDG", 0, 0, OffsetDateTime.now(), null);
+            when(orgAdminService.updateOrgPays(ORG_ID, "MDG")).thenReturn(expected);
+
+            OrgSummaryResponse result = superAdminService.updateOrgPays(ORG_ID, "MDG");
+
+            verify(orgAdminService).updateOrgPays(ORG_ID, "MDG");
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("resendAdminInvitation delegates to orgAdminService with orgId")
+        void resendAdminInvitationDelegates() {
+            superAdminService.resendAdminInvitation(ORG_ID);
+
+            verify(orgAdminService).resendAdminInvitation(ORG_ID);
+            verifyNoInteractions(commercialAdminService, platformAdminService);
         }
     }
 
+    // ── Identifications delegation ────────────────────────────────────────────
+
     @Nested
-    @DisplayName("PromoCodeResponse.from() — B-16 DTO mapping")
-    class PromoCodeResponseMapping {
+    @DisplayName("Identification methods — delegate to OrgAdminService")
+    class IdentificationsDelegation {
 
         @Test
-        @DisplayName("maps all fields from entity to record")
-        void mapsAllFields() {
-            OffsetDateTime validFrom = OffsetDateTime.now().minusDays(5);
-            OffsetDateTime validTo   = OffsetDateTime.now().plusDays(25);
+        @DisplayName("getOrgIdentifications delegates to orgAdminService with orgId")
+        void getOrgIdentificationsDelegates() {
+            OrgIdentificationsResponse expected = new OrgIdentificationsResponse(
+                    ORG_ID, "Co", "CAN", "QC", "BN", "PI", null, null, "UNVERIFIED", null, null, null);
+            when(orgAdminService.getOrgIdentifications(ORG_ID)).thenReturn(expected);
 
-            PromoCode entity = PromoCode.builder()
-                    .id("promo-1")
-                    .code("SUMMER50")
-                    .description("Summer discount")
-                    .discountPercent(50)
-                    .discountMonths(3)
-                    .planOverride("PRO")
-                    .maxUses(100)
-                    .currentUses(10)
-                    .validFrom(validFrom)
-                    .validTo(validTo)
-                    .active(true)
-                    .build();
+            OrgIdentificationsResponse result = superAdminService.getOrgIdentifications(ORG_ID);
 
-            PromoCodeResponse response = PromoCodeResponse.from(entity);
-
-            assertThat(response.id()).isEqualTo("promo-1");
-            assertThat(response.code()).isEqualTo("SUMMER50");
-            assertThat(response.description()).isEqualTo("Summer discount");
-            assertThat(response.discountPercent()).isEqualTo(50);
-            assertThat(response.discountMonths()).isEqualTo(3);
-            assertThat(response.planOverride()).isEqualTo("PRO");
-            assertThat(response.maxUses()).isEqualTo(100);
-            assertThat(response.currentUses()).isEqualTo(10);
-            assertThat(response.validFrom()).isEqualTo(validFrom);
-            assertThat(response.validTo()).isEqualTo(validTo);
-            assertThat(response.active()).isTrue();
+            verify(orgAdminService).getOrgIdentifications(ORG_ID);
+            assertThat(result).isSameAs(expected);
         }
 
         @Test
-        @DisplayName("optional fields (discountPercent, discountMonths, planOverride, maxUses, validTo) map to null when absent")
-        void nullableFieldsMappedToNull() {
-            PromoCode entity = PromoCode.builder()
-                    .id("promo-2")
-                    .code("MINIMAL")
-                    .active(true)
-                    .build();
+        @DisplayName("updateOrgIdentifications delegates to orgAdminService with request")
+        void updateOrgIdentificationsDelegates() {
+            UpdateOrgIdentificationsRequest request =
+                    new UpdateOrgIdentificationsRequest("QC", "BN", "PI", null, null);
+            OrgIdentificationsResponse expected = new OrgIdentificationsResponse(
+                    ORG_ID, "Co", "CAN", "QC", "BN", "PI", null, null, "UNVERIFIED", null, null, null);
+            when(orgAdminService.updateOrgIdentifications(ORG_ID, request)).thenReturn(expected);
 
-            PromoCodeResponse response = PromoCodeResponse.from(entity);
+            OrgIdentificationsResponse result = superAdminService.updateOrgIdentifications(ORG_ID, request);
 
-            assertThat(response.discountPercent()).isNull();
-            assertThat(response.discountMonths()).isNull();
-            assertThat(response.planOverride()).isNull();
-            assertThat(response.maxUses()).isNull();
-            assertThat(response.validTo()).isNull();
+            verify(orgAdminService).updateOrgIdentifications(ORG_ID, request);
+            assertThat(result).isSameAs(expected);
         }
 
         @Test
-        @DisplayName("active=false is preserved in response")
-        void inactiveFlagPreserved() {
-            PromoCode entity = PromoCode.builder()
-                    .id("promo-3")
-                    .code("EXPIRED")
-                    .active(false)
-                    .build();
+        @DisplayName("updateOrgVerificationStatus delegates to orgAdminService with all params")
+        void updateOrgVerificationStatusDelegates() {
+            OrgIdentificationsResponse expected = new OrgIdentificationsResponse(
+                    ORG_ID, "Co", "CAN", null, null, null, null, null, "VERIFIED", "admin@s.io", null, "OK");
+            when(orgAdminService.updateOrgVerificationStatus(ORG_ID, "VERIFIED", "OK", "admin@s.io"))
+                    .thenReturn(expected);
 
-            PromoCodeResponse response = PromoCodeResponse.from(entity);
+            OrgIdentificationsResponse result = superAdminService.updateOrgVerificationStatus(
+                    ORG_ID, "VERIFIED", "OK", "admin@s.io");
 
-            assertThat(response.active()).isFalse();
+            verify(orgAdminService).updateOrgVerificationStatus(ORG_ID, "VERIFIED", "OK", "admin@s.io");
+            assertThat(result).isSameAs(expected);
         }
     }
 
+    // ── Subscription delegation ───────────────────────────────────────────────
+
     @Nested
-    @DisplayName("FeatureFlagResponse.from() — B-16 DTO mapping")
-    class FeatureFlagResponseMapping {
+    @DisplayName("Subscription methods — delegate to CommercialAdminService")
+    class SubscriptionDelegation {
 
         @Test
-        @DisplayName("maps all fields from entity to record")
-        void mapsAllFields() {
-            FeatureFlag entity = FeatureFlag.builder()
-                    .id("ff-1")
-                    .organisationId("org-1")
-                    .featureKey("PLANNING_EXPORT")
-                    .enabled(true)
-                    .build();
+        @DisplayName("getSubscription delegates to commercialAdminService with orgId")
+        void getSubscriptionDelegates() {
+            SubscriptionResponse expected = new SubscriptionResponse(
+                    "sub-1", ORG_ID, com.schedy.entity.Subscription.PlanTier.PRO,
+                    com.schedy.entity.Subscription.SubscriptionStatus.ACTIVE,
+                    100, 5, null, null, null, null);
+            when(commercialAdminService.getSubscription(ORG_ID)).thenReturn(expected);
 
-            FeatureFlagResponse response = FeatureFlagResponse.from(entity);
+            SubscriptionResponse result = superAdminService.getSubscription(ORG_ID);
 
-            assertThat(response.id()).isEqualTo("ff-1");
-            assertThat(response.organisationId()).isEqualTo("org-1");
-            assertThat(response.featureKey()).isEqualTo("PLANNING_EXPORT");
-            assertThat(response.enabled()).isTrue();
+            verify(commercialAdminService).getSubscription(ORG_ID);
+            assertThat(result).isSameAs(expected);
         }
 
         @Test
-        @DisplayName("enabled=false is preserved in response")
-        void disabledFlagPreserved() {
-            FeatureFlag entity = FeatureFlag.builder()
-                    .id("ff-2")
-                    .organisationId("org-1")
-                    .featureKey("BETA_FEATURE")
-                    .enabled(false)
-                    .build();
+        @DisplayName("updateSubscription delegates to commercialAdminService with orgId and dto")
+        void updateSubscriptionDelegates() {
+            SubscriptionDto dto = new SubscriptionDto("PRO", 50, 3, null, null);
+            SubscriptionResponse expected = new SubscriptionResponse(
+                    "sub-1", ORG_ID, com.schedy.entity.Subscription.PlanTier.PRO,
+                    com.schedy.entity.Subscription.SubscriptionStatus.ACTIVE,
+                    50, 3, null, null, null, null);
+            when(commercialAdminService.updateSubscription(ORG_ID, dto)).thenReturn(expected);
 
-            FeatureFlagResponse response = FeatureFlagResponse.from(entity);
+            SubscriptionResponse result = superAdminService.updateSubscription(ORG_ID, dto);
 
-            assertThat(response.enabled()).isFalse();
+            verify(commercialAdminService).updateSubscription(ORG_ID, dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("applyPromoCode delegates to commercialAdminService with orgId and code")
+        void applyPromoCodeDelegates() {
+            SubscriptionResponse expected = new SubscriptionResponse(
+                    "sub-1", ORG_ID, com.schedy.entity.Subscription.PlanTier.PRO,
+                    com.schedy.entity.Subscription.SubscriptionStatus.ACTIVE,
+                    100, 5, null, "promo-1", null, null);
+            when(commercialAdminService.applyPromoCode(ORG_ID, "BETA50")).thenReturn(expected);
+
+            SubscriptionResponse result = superAdminService.applyPromoCode(ORG_ID, "BETA50");
+
+            verify(commercialAdminService).applyPromoCode(ORG_ID, "BETA50");
+            assertThat(result).isSameAs(expected);
         }
     }
 
+    // ── Promo code delegation ─────────────────────────────────────────────────
+
     @Nested
-    @DisplayName("ImpersonationLogResponse.from() — B-16 DTO mapping")
-    class ImpersonationLogResponseMapping {
+    @DisplayName("Promo code methods — delegate to CommercialAdminService")
+    class PromoCodeDelegation {
 
         @Test
-        @DisplayName("maps all fields from entity to record")
-        void mapsAllFields() {
-            OffsetDateTime startedAt = OffsetDateTime.now().minusMinutes(10);
-            OffsetDateTime endedAt   = OffsetDateTime.now();
+        @DisplayName("findAllPromoCodes delegates to commercialAdminService")
+        void findAllPromoCodesDelegates() {
+            List<PromoCodeResponse> expected = List.of();
+            when(commercialAdminService.findAllPromoCodes()).thenReturn(expected);
 
-            ImpersonationLog entity = ImpersonationLog.builder()
-                    .id("log-1")
-                    .superadminEmail("admin@schedy.io")
-                    .targetOrgId("org-xyz")
-                    .targetOrgName("Acme Corp")
-                    .reason("Support request #42")
-                    .ipAddress("192.168.1.1")
-                    .startedAt(startedAt)
-                    .endedAt(endedAt)
-                    .build();
+            List<PromoCodeResponse> result = superAdminService.findAllPromoCodes();
 
-            ImpersonationLogResponse response = ImpersonationLogResponse.from(entity);
-
-            assertThat(response.id()).isEqualTo("log-1");
-            assertThat(response.superadminEmail()).isEqualTo("admin@schedy.io");
-            //assertThat(response.organisationId()).isEqualTo("org-xyz");
-            assertThat(response.organisationName()).isEqualTo("Acme Corp");
-            assertThat(response.reason()).isEqualTo("Support request #42");
-            assertThat(response.ipAddress()).isEqualTo("192.168.1.1");
-            assertThat(response.startedAt()).isEqualTo(startedAt);
-            assertThat(response.endedAt()).isEqualTo(endedAt);
+            verify(commercialAdminService).findAllPromoCodes();
+            assertThat(result).isSameAs(expected);
         }
 
         @Test
-        @DisplayName("nullable fields (endedAt, reason, ipAddress) map to null when absent")
-        void nullableFieldsMappedToNull() {
-            ImpersonationLog entity = ImpersonationLog.builder()
-                    .id("log-2")
-                    .superadminEmail("admin@schedy.io")
-                    .targetOrgId("org-xyz")
-                    .targetOrgName("Acme Corp")
-                    .build();
+        @DisplayName("createPromoCode delegates to commercialAdminService with dto")
+        void createPromoCodeDelegates() {
+            PromoCodeDto dto = new PromoCodeDto("NEW", "desc", 10, null, null, null, null, null, true);
+            PromoCodeResponse expected = new PromoCodeResponse(
+                    "p1", "NEW", "desc", 10, null, null, null, 0, null, null, true);
+            when(commercialAdminService.createPromoCode(dto)).thenReturn(expected);
 
-            ImpersonationLogResponse response = ImpersonationLogResponse.from(entity);
+            PromoCodeResponse result = superAdminService.createPromoCode(dto);
 
-            assertThat(response.endedAt()).isNull();
-            assertThat(response.reason()).isNull();
-            assertThat(response.ipAddress()).isNull();
+            verify(commercialAdminService).createPromoCode(dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("updatePromoCode delegates to commercialAdminService with id and dto")
+        void updatePromoCodeDelegates() {
+            PromoCodeDto dto = new PromoCodeDto("NEW", "d", 10, null, null, null, null, null, true);
+            PromoCodeResponse expected = new PromoCodeResponse(
+                    "p1", "NEW", "d", 10, null, null, null, 0, null, null, true);
+            when(commercialAdminService.updatePromoCode("p1", dto)).thenReturn(expected);
+
+            PromoCodeResponse result = superAdminService.updatePromoCode("p1", dto);
+
+            verify(commercialAdminService).updatePromoCode("p1", dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("deletePromoCode delegates to commercialAdminService with id")
+        void deletePromoCodeDelegates() {
+            superAdminService.deletePromoCode("p1");
+
+            verify(commercialAdminService).deletePromoCode("p1");
+            verifyNoInteractions(orgAdminService, platformAdminService);
+        }
+
+        @Test
+        @DisplayName("validatePromoCode delegates to commercialAdminService and returns entity")
+        void validatePromoCodeDelegates() {
+            PromoCode expected = PromoCode.builder().id("p1").code("VALID").active(true).build();
+            when(commercialAdminService.validatePromoCode("VALID")).thenReturn(expected);
+
+            PromoCode result = superAdminService.validatePromoCode("VALID");
+
+            verify(commercialAdminService).validatePromoCode("VALID");
+            assertThat(result).isSameAs(expected);
+        }
+    }
+
+    // ── Feature flag delegation ───────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Feature flag methods — delegate to PlatformAdminService")
+    class FeatureFlagDelegation {
+
+        @Test
+        @DisplayName("getFeatureFlags delegates to platformAdminService with orgId")
+        void getFeatureFlagsDelegates() {
+            List<FeatureFlagResponse> expected = List.of(
+                    new FeatureFlagResponse("ff-1", ORG_ID, "PLANNING", true));
+            when(platformAdminService.getFeatureFlags(ORG_ID)).thenReturn(expected);
+
+            List<FeatureFlagResponse> result = superAdminService.getFeatureFlags(ORG_ID);
+
+            verify(platformAdminService).getFeatureFlags(ORG_ID);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("updateFeatureFlags delegates to platformAdminService with orgId and dtos")
+        void updateFeatureFlagsDelegates() {
+            List<FeatureFlagDto> dtos = List.of(new FeatureFlagDto("REPORTS", false));
+            List<FeatureFlagResponse> expected = List.of(
+                    new FeatureFlagResponse("ff-2", ORG_ID, "REPORTS", false));
+            when(platformAdminService.updateFeatureFlags(ORG_ID, dtos)).thenReturn(expected);
+
+            List<FeatureFlagResponse> result = superAdminService.updateFeatureFlags(ORG_ID, dtos);
+
+            verify(platformAdminService).updateFeatureFlags(ORG_ID, dtos);
+            assertThat(result).isSameAs(expected);
+        }
+    }
+
+    // ── Announcement delegation ───────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Announcement methods — delegate to PlatformAdminService")
+    class AnnouncementDelegation {
+
+        @Test
+        @DisplayName("getAnnouncements delegates to platformAdminService")
+        void getAnnouncementsDelegates() {
+            List<AnnouncementResponse> expected = List.of();
+            when(platformAdminService.getAnnouncements()).thenReturn(expected);
+
+            List<AnnouncementResponse> result = superAdminService.getAnnouncements();
+
+            verify(platformAdminService).getAnnouncements();
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("createAnnouncement delegates to platformAdminService with dto")
+        void createAnnouncementDelegates() {
+            AnnouncementDto dto = new AnnouncementDto("T", "B", "INFO", true, null);
+            AnnouncementResponse expected = new AnnouncementResponse(
+                    "ann-1", "T", "B",
+                    com.schedy.entity.PlatformAnnouncement.Severity.INFO,
+                    true, null, null, null);
+            when(platformAdminService.createAnnouncement(dto)).thenReturn(expected);
+
+            AnnouncementResponse result = superAdminService.createAnnouncement(dto);
+
+            verify(platformAdminService).createAnnouncement(dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("updateAnnouncement delegates to platformAdminService with id and dto")
+        void updateAnnouncementDelegates() {
+            AnnouncementDto dto = new AnnouncementDto("New", "Body", "WARNING", false, null);
+            AnnouncementResponse expected = new AnnouncementResponse(
+                    "ann-1", "New", "Body",
+                    com.schedy.entity.PlatformAnnouncement.Severity.WARNING,
+                    false, null, null, null);
+            when(platformAdminService.updateAnnouncement("ann-1", dto)).thenReturn(expected);
+
+            AnnouncementResponse result = superAdminService.updateAnnouncement("ann-1", dto);
+
+            verify(platformAdminService).updateAnnouncement("ann-1", dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("deleteAnnouncement delegates to platformAdminService with id")
+        void deleteAnnouncementDelegates() {
+            superAdminService.deleteAnnouncement("ann-1");
+
+            verify(platformAdminService).deleteAnnouncement("ann-1");
+            verifyNoInteractions(orgAdminService, commercialAdminService);
+        }
+    }
+
+    // ── Impersonation delegation ──────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Impersonation methods — delegate to PlatformAdminService")
+    class ImpersonationDelegation {
+
+        @Test
+        @DisplayName("generateImpersonationToken delegates to platformAdminService with all params")
+        void generateImpersonationTokenDelegates() {
+            ImpersonateResponse expected = new ImpersonateResponse("tok", "Acme", "CAN", 1800L);
+            when(platformAdminService.generateImpersonationToken(
+                    ORG_ID, "superadmin@s.io", "Support", "1.2.3.4"))
+                    .thenReturn(expected);
+
+            ImpersonateResponse result = superAdminService.generateImpersonationToken(
+                    ORG_ID, "superadmin@s.io", "Support", "1.2.3.4");
+
+            verify(platformAdminService)
+                    .generateImpersonationToken(ORG_ID, "superadmin@s.io", "Support", "1.2.3.4");
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("getImpersonationLog delegates to platformAdminService with page and size")
+        void getImpersonationLogDelegates() {
+            Page<ImpersonationLogResponse> expected = new PageImpl<>(List.of());
+            when(platformAdminService.getImpersonationLog(1, 20)).thenReturn(expected);
+
+            Page<ImpersonationLogResponse> result = superAdminService.getImpersonationLog(1, 20);
+
+            verify(platformAdminService).getImpersonationLog(1, 20);
+            assertThat(result).isSameAs(expected);
+        }
+    }
+
+    // ── Plan template delegation ──────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Plan template methods — delegate to CommercialAdminService")
+    class PlanTemplateDelegation {
+
+        @Test
+        @DisplayName("findAllPlanTemplates delegates to commercialAdminService")
+        void findAllPlanTemplatesDelegates() {
+            List<PlanTemplateResponse> expected = List.of();
+            when(commercialAdminService.findAllPlanTemplates()).thenReturn(expected);
+
+            List<PlanTemplateResponse> result = superAdminService.findAllPlanTemplates();
+
+            verify(commercialAdminService).findAllPlanTemplates();
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("createPlanTemplate delegates to commercialAdminService with dto")
+        void createPlanTemplateDelegates() {
+            PlanTemplateDto dto = new PlanTemplateDto(
+                    "STARTER", "Starter", null, 25, 2, null, null, 14, true, 1, null);
+            PlanTemplateResponse expected = new PlanTemplateResponse(
+                    "t1", "STARTER", "Starter", null, 25, 2,
+                    null, null, 14, true, 1, Map.of(), null, null);
+            when(commercialAdminService.createPlanTemplate(dto)).thenReturn(expected);
+
+            PlanTemplateResponse result = superAdminService.createPlanTemplate(dto);
+
+            verify(commercialAdminService).createPlanTemplate(dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("updatePlanTemplate delegates to commercialAdminService with id and dto")
+        void updatePlanTemplateDelegates() {
+            PlanTemplateDto dto = new PlanTemplateDto(
+                    "STARTER", "Updated", null, 30, 3, null, null, 30, true, 1, null);
+            PlanTemplateResponse expected = new PlanTemplateResponse(
+                    "t1", "STARTER", "Updated", null, 30, 3,
+                    null, null, 30, true, 1, Map.of(), null, null);
+            when(commercialAdminService.updatePlanTemplate("t1", dto)).thenReturn(expected);
+
+            PlanTemplateResponse result = superAdminService.updatePlanTemplate("t1", dto);
+
+            verify(commercialAdminService).updatePlanTemplate("t1", dto);
+            assertThat(result).isSameAs(expected);
+        }
+
+        @Test
+        @DisplayName("deletePlanTemplate delegates to commercialAdminService with id")
+        void deletePlanTemplateDelegates() {
+            superAdminService.deletePlanTemplate("t1");
+
+            verify(commercialAdminService).deletePlanTemplate("t1");
+            verifyNoInteractions(orgAdminService, platformAdminService);
+        }
+
+        @Test
+        @DisplayName("findPlanTemplate delegates to commercialAdminService with id")
+        void findPlanTemplateDelegates() {
+            PlanTemplateResponse expected = new PlanTemplateResponse(
+                    "t1", "PRO", "Pro", null, 100, 10,
+                    null, null, 30, true, 2, Map.of(), null, null);
+            when(commercialAdminService.findPlanTemplate("t1")).thenReturn(expected);
+
+            PlanTemplateResponse result = superAdminService.findPlanTemplate("t1");
+
+            verify(commercialAdminService).findPlanTemplate("t1");
+            assertThat(result).isSameAs(expected);
         }
     }
 }

@@ -86,9 +86,8 @@ public class RegistrationRequestService {
 
         // Confirmation email to organisation — best-effort, never blocks the response
         try {
-            boolean isFrench = LocaleUtils.isFrenchSpeaking(dto.pays());
             emailService.sendRegistrationRequestConfirmation(
-                    dto.contactEmail(), dto.contactName(), dto.organisationName(), isFrench);
+                    dto.contactEmail(), dto.contactName(), dto.organisationName());
         } catch (Exception e) {
             log.error("Failed to send registration confirmation email to {}: {}",
                     dto.contactEmail(), e.getMessage());
@@ -243,13 +242,11 @@ public class RegistrationRequestService {
 
         // Rejection email — best-effort
         try {
-            boolean isFrench = LocaleUtils.isFrenchSpeaking(request.getPays());
             emailService.sendRegistrationRequestRejection(
                     request.getContactEmail(),
                     request.getContactName(),
                     request.getOrganisationName(),
-                    reason,
-                    isFrench);
+                    reason);
         } catch (Exception e) {
             log.error("Failed to send rejection email to {}: {}", request.getContactEmail(), e.getMessage());
         }

@@ -1,0 +1,761 @@
+package com.schedy.service.email;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+/**
+ * Responsible for constructing all HTML email bodies used by EmailService.
+ * Contains no I/O: every method is a pure string builder.
+ *
+ * Shared structural helpers (buildEmailShell, buildEmailFooter, buildSection,
+ * buildFeatureRow, escapeHtml) are package-visible so that EmailService can
+ * delegate cleanly without re-importing anything.
+ */
+@Component
+@Slf4j
+public class EmailHtmlBuilder {
+
+    private final String frontendUrl;
+    private final int expiryHours;
+    private final String contactAddress;
+
+    private static final String CID_LOGO_IMG =
+        "<img src=\"cid:schedy_logo\" alt=\"Schedy\" width=\"160\" "
+        + "style=\"display:block;border:0;height:auto;max-width:160px;\"/>";
+
+    public EmailHtmlBuilder(
+            @Value("${schedy.frontend-url:http://localhost:4200}") String frontendUrl,
+            @Value("${schedy.invitation.expiry-hours:24}") int expiryHours,
+            @Value("${schedy.mail.contact:contact@schedy.work}") String contactAddress) {
+        this.frontendUrl    = frontendUrl;
+        this.expiryHours    = expiryHours;
+        this.contactAddress = contactAddress;
+    }
+
+    // ── Auth / account emails ──────────────────────────────────────────────
+
+    public String buildInvitationHtml(String name, String link) {
+        String linkFr = link + "&lang=fr";
+        String linkEn = link + "&lang=en";
+        String year   = currentYear();
+        String h      = String.valueOf(expiryHours);
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + name + ", activation de votre compte Schedy. / Schedy account activation."
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            + buildSection(name, linkFr, h,
+                "Activation de votre compte utilisateur",
+                "Bonjour",
+                "Un compte utilisateur a \u00e9t\u00e9 cr\u00e9\u00e9 pour vous sur <strong style=\"color:#047857;\">Schedy</strong> pour la gestion de vos plannings et de votre pointage.",
+                "",
+                new String[]{},
+                "Pour acc\u00e9der \u00e0 votre espace personnel et consulter vos horaires, vous devez pr\u00e9alablement d\u00e9finir votre mot de passe\u00a0:",
+                "D\u00e9finir mon mot de passe",
+                "Ce lien est valide pendant <strong>" + h + " heures</strong>. En cas d\u2019expiration, merci de vous rapprocher de votre responsable.",
+                "")
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + buildSection(name, linkEn, h,
+                "Schedy user account activation",
+                "Dear",
+                "A user account has been created for you on <strong style=\"color:#047857;\">Schedy</strong> for schedule management and time tracking.",
+                "",
+                new String[]{},
+                "To access your personal dashboard and view your shifts, please set your password using the button below:",
+                "Set my password",
+                "This link is valid for <strong>" + h + " hours</strong>. Should it expire, please contact your manager.",
+                "")
+
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "<p style=\"margin:12px 0 0;font-size:10px;color:#D1D5DB;\">"
+            + "FR: <a href=\"" + linkFr + "\" style=\"color:#9CA3AF;text-decoration:underline;\">lien direct</a>"
+            + " &nbsp;|&nbsp; EN: <a href=\"" + linkEn + "\" style=\"color:#9CA3AF;text-decoration:underline;\">direct link</a></p>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
+    public String buildAdminInvitationHtml(String orgName, String link) {
+        String linkFr = link + "&lang=fr";
+        String linkEn = link + "&lang=en";
+        String year   = currentYear();
+        String h      = String.valueOf(expiryHours);
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + "Activation de votre acc\u00e8s administrateur - " + orgName + " / Administrator account activation - " + orgName
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            + buildSection(orgName, linkFr, h,
+                "Activation de votre acc\u00e8s administrateur",
+                "Bonjour",
+                "L\u2019espace d\u2019administration pour l\u2019organisation <strong style=\"color:#047857;\">" + orgName + "</strong> a \u00e9t\u00e9 configur\u00e9 sur Schedy.",
+                "",
+                new String[]{},
+                "Votre profil administrateur vous permet de g\u00e9rer les param\u00e8tres de l\u2019organisation, de configurer les sites et de superviser l\u2019ensemble des plannings et du personnel.\n\nVeuillez finaliser la configuration de votre compte en d\u00e9finissant votre mot de passe via le bouton ci-dessous\u00a0:",
+                "D\u00e9finir mon mot de passe",
+                "Ce lien de s\u00e9curit\u00e9 expirera dans <strong>" + h + " heures</strong>. Pass\u00e9 ce d\u00e9lai, veuillez contacter le support pour un nouvel envoi.",
+                "")
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + buildSection(orgName, linkEn, h,
+                "Administrator account activation",
+                "Dear Administrator",
+                "The administration workspace for <strong style=\"color:#047857;\">" + orgName + "</strong> has been successfully set up on Schedy.",
+                "",
+                new String[]{},
+                "Your administrator profile grants you access to organization settings, site configuration, and full oversight of schedules and personnel.\n\nPlease finalize your account setup by creating your password via the link below:",
+                "Set my password",
+                "This secure link will expire in <strong>" + h + " hours</strong>. If the link expires, please contact support to request a new one.",
+                "")
+
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "<p style=\"margin:12px 0 0;font-size:10px;color:#D1D5DB;\">"
+            + "FR: <a href=\"" + linkFr + "\" style=\"color:#9CA3AF;text-decoration:underline;\">lien direct</a>"
+            + " &nbsp;|&nbsp; EN: <a href=\"" + linkEn + "\" style=\"color:#9CA3AF;text-decoration:underline;\">direct link</a></p>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
+    public String buildPasswordResetHtml(String name, String rawToken) {
+        String linkFr = frontendUrl + "/set-password?resetToken=" + rawToken + "&lang=fr";
+        String linkEn = frontendUrl + "/set-password?resetToken=" + rawToken + "&lang=en";
+        String year   = currentYear();
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + name + ", r\u00e9initialisez votre mot de passe Schedy. / Reset your Schedy password."
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            + buildSection(name, linkFr, "1",
+                "R\u00e9initialisation de votre mot de passe",
+                "Bonjour",
+                "Nous avons re\u00e7u une demande de r\u00e9initialisation du mot de passe associ\u00e9 \u00e0 votre compte <strong style=\"color:#047857;\">Schedy</strong>.",
+                "",
+                new String[]{},
+                "Cliquez sur le bouton ci-dessous pour d\u00e9finir un nouveau mot de passe. Ce lien est \u00e0 usage unique.",
+                "R\u00e9initialiser mon mot de passe",
+                "Ce lien expire dans <strong>1 heure</strong>. Pass\u00e9 ce d\u00e9lai, vous devrez refaire une demande.",
+                "Si vous n\u2019\u00eates pas \u00e0 l\u2019origine de cette demande, ignorez cet email. Votre mot de passe ne sera pas modifi\u00e9.")
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + buildSection(name, linkEn, "1",
+                "Password reset",
+                "Dear",
+                "We received a request to reset the password for your <strong style=\"color:#047857;\">Schedy</strong> account.",
+                "",
+                new String[]{},
+                "Click the button below to set a new password. This link is single-use.",
+                "Reset my password",
+                "This link expires in <strong>1 hour</strong>. After that, you will need to request a new one.",
+                "If you did not request a password reset, please ignore this email. Your password will not be changed.")
+
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "<p style=\"margin:12px 0 0;font-size:10px;color:#D1D5DB;\">"
+            + "FR: <a href=\"" + linkFr + "\" style=\"color:#9CA3AF;text-decoration:underline;\">lien direct</a>"
+            + " &nbsp;|&nbsp; EN: <a href=\"" + linkEn + "\" style=\"color:#9CA3AF;text-decoration:underline;\">direct link</a></p>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
+    public String buildPromotionHtml(String name, String link) {
+        String year = currentYear();
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + name + ", mise \u00e0 jour de vos acc\u00e8s Schedy. / Schedy account update."
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            + buildSection(name, link, "",
+                "Mise \u00e0 jour de vos acc\u00e8s Schedy",
+                "Bonjour",
+                "Votre profil utilisateur sur Schedy a \u00e9t\u00e9 mis \u00e0 jour. Vous disposez d\u00e9sormais des acc\u00e8s relatifs au r\u00f4le de <strong style=\"color:#047857;\">Manager</strong>.",
+                "Ce changement vous permet d\u2019acc\u00e9der aux fonctionnalit\u00e9s de gestion suivantes\u00a0:",
+                new String[]{
+                    "\u00c9dition et supervision des plannings d\u2019\u00e9quipe.",
+                    "Validation des pointages et suivi des pr\u00e9sences.",
+                    "Traitement des demandes de cong\u00e9s et d\u2019absences."
+                },
+                "Ces outils sont d\u00e8s \u00e0 pr\u00e9sent disponibles sur votre interface habituelle.",
+                "Acc\u00e9der \u00e0 mon espace",
+                "", "")
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + buildSection(name, link, "",
+                "Schedy account update \u2014 Manager role assigned",
+                "Dear",
+                "Your Schedy user profile has been updated. You have been assigned the <strong style=\"color:#047857;\">Manager</strong> role.",
+                "This update grants you access to the following management tools:",
+                new String[]{
+                    "Team schedule oversight and editing.",
+                    "Attendance tracking and time-clock validation.",
+                    "Leave and absence request processing."
+                },
+                "These features are now available within your standard workspace.",
+                "Access my workspace",
+                "", "")
+
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
+    public String build2faCodeHtml(String name, String code, String minutes) {
+        String year     = currentYear();
+        String safeCode = escapeHtml(code);
+
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<title>Schedy</title>\n</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;font-size:1px;color:#FFFFFF;\">"
+            + "Votre code : " + code + " / Your code: " + code + "&zwnj;&nbsp;&zwnj;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n"
+
+            // FR
+            + "<tr><td style=\"padding:0 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 8px;font-size:20px;font-weight:700;color:#1F2937;\">V\u00e9rification de connexion</p>\n"
+            + "<p style=\"margin:0 0 6px;font-size:15px;color:#4B5563;line-height:1.65;\">Bonjour " + name + ",</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Une tentative de connexion a \u00e9t\u00e9 d\u00e9tect\u00e9e sur votre compte Schedy. "
+            + "Veuillez saisir le code ci-dessous pour confirmer votre identit\u00e9\u00a0:</p>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
+            + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
+            + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.4em;"
+            + "font-family:'Courier New',monospace;\">" + safeCode + "</span>\n"
+            + "</div>\n"
+            + "</td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
+            + "Ce code est valable <strong>" + minutes + " minutes</strong>. "
+            + "Si vous n\u2019\u00eates pas \u00e0 l\u2019origine de cette connexion, ignorez cet email.</p>\n"
+            + "</td></tr>\n"
+
+            // Separator
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            // EN
+            + "<tr><td style=\"padding:24px 32px;\">\n"
+            + "<p style=\"margin:0 0 8px;font-size:20px;font-weight:700;color:#1F2937;\">Login verification</p>\n"
+            + "<p style=\"margin:0 0 6px;font-size:15px;color:#4B5563;line-height:1.65;\">Dear " + name + ",</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "A login attempt has been detected on your Schedy account. "
+            + "Please enter the code below to verify your identity:</p>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td align=\"center\" style=\"padding:20px 0;\">\n"
+            + "<div style=\"display:inline-block;padding:16px 32px;background-color:#F3F4F6;"
+            + "border:2px solid #E5E7EB;border-radius:8px;\">\n"
+            + "<span style=\"font-size:32px;font-weight:800;color:#047857;letter-spacing:0.4em;"
+            + "font-family:'Courier New',monospace;\">" + safeCode + "</span>\n"
+            + "</div>\n"
+            + "</td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;line-height:1.5;\">"
+            + "This code is valid for <strong>" + minutes + " minutes</strong>. "
+            + "If you did not initiate this login, please ignore this email.</p>\n"
+            + "</td></tr>\n"
+
+            // Footer
+            + "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td><td align=\"right\" style=\"font-size:11px;color:#D1D5DB;\">\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n</td></tr>\n"
+            + "</table>\n</body></html>";
+    }
+
+    public String buildWaitlistHtml(String recipientEmail, boolean isFr) {
+        String bodyFr = "Bonjour,<br><br>"
+            + "Merci de votre int\u00e9r\u00eat pour <strong>Schedy PRO</strong>. "
+            + "Vous \u00eates bien inscrit(e) sur notre liste d'attente.<br><br>"
+            + "Nous vous contacterons d\u00e8s que le plan PRO sera disponible.<br><br>"
+            + "En attendant, vous pouvez d\u00e9j\u00e0 essayer Schedy ESSENTIALS gratuitement.<br><br>"
+            + "\u00c0 bient\u00f4t,<br>L'\u00e9quipe Schedy";
+        String bodyEn = "Hello,<br><br>"
+            + "Thank you for your interest in <strong>Schedy PRO</strong>. "
+            + "You are now on our waitlist.<br><br>"
+            + "We will contact you as soon as the PRO plan is available.<br><br>"
+            + "In the meantime, you can already try Schedy ESSENTIALS for free.<br><br>"
+            + "See you soon,<br>The Schedy team";
+
+        return "<!DOCTYPE html><html><body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "font-size:15px;color:#1F2937;line-height:1.65;padding:24px;\">"
+            + (isFr ? bodyFr : bodyEn)
+            + "<hr style=\"border:none;border-top:1px solid #E5E7EB;margin:24px 0;\">"
+            + (isFr ? bodyEn : bodyFr)
+            + "</body></html>";
+    }
+
+    // ── Absence emails ─────────────────────────────────────────────────────
+
+    public String buildAbsenceSignaleeHtml(String recipientName, com.schedy.entity.AbsenceImprevue absence,
+                                            String employeNom, String appLink) {
+        return "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence impr\u00e9vue signal\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 16px;\">"
+            + "<strong>" + escapeHtml(employeNom) + "</strong> a signal\u00e9 une absence impr\u00e9vue pour le "
+            + "<strong style=\"color:#047857;\">" + absence.getDateAbsence() + "</strong>.</p>"
+            + buildFeatureRow("#10B981", "Motif : " + absence.getMotif())
+            + (absence.getMessageEmploye() != null && !absence.getMessageEmploye().isBlank()
+                ? buildFeatureRow("#6B7280", "Message : " + absence.getMessageEmploye()) : "")
+            + buildFeatureRow("#F59E0B", absence.getCreneauIds().size() + " cr\u00e9neau(x) impact\u00e9(s)")
+            + "<p style=\"font-size:15px;color:#4B5563;margin:16px 0 0;\">Veuillez valider ou refuser cette absence :</p>"
+            + "<table role=\"presentation\" style=\"margin:24px 0;\"><tr><td>"
+            + "<a href=\"" + appLink + "\" style=\"display:inline-block;background:#047857;color:#fff;"
+            + "font-size:15px;font-weight:600;text-decoration:none;padding:13px 36px;border-radius:6px;\">"
+            + "Voir dans l'application</a></td></tr></table>"
+            + "</td></tr>"
+            + buildSimpleFooter()
+            + "</table></body></html>";
+    }
+
+    public String buildAbsenceValideeHtml(String recipientName, String date) {
+        return "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence valid\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 16px;\">"
+            + "Votre absence du <strong>" + date + "</strong> a \u00e9t\u00e9 valid\u00e9e par votre manager. "
+            + "Un rempla\u00e7ant sera assign\u00e9 si n\u00e9cessaire.</p>"
+            + "</td></tr>"
+            + buildSimpleFooter()
+            + "</table></body></html>";
+    }
+
+    public String buildAbsenceRefuseeHtml(String recipientName, String date, String noteRefus) {
+        return "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#DC2626;margin:0 0 16px;\">Absence refus\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 8px;\">"
+            + "Votre absence du <strong>" + date + "</strong> a \u00e9t\u00e9 refus\u00e9e. "
+            + "Vous \u00eates attendu(e) \u00e0 votre poste.</p>"
+            + (noteRefus != null && !noteRefus.isBlank()
+                ? "<p style=\"font-size:14px;color:#6B7280;margin:12px 0 0;\"><strong>Motif :</strong> "
+                  + escapeHtml(noteRefus) + "</p>" : "")
+            + "</td></tr>"
+            + buildSimpleFooter()
+            + "</table></body></html>";
+    }
+
+    public String buildAbsenceAnnuleeHtml(String recipientName, String employeNom, String date) {
+        return "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"/></head>"
+            + "<body style=\"margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#1F2937;\">"
+            + "<table role=\"presentation\" width=\"100%\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);\"></td></tr>"
+            + "<tr><td style=\"padding:32px;\">"
+            + "<p style=\"font-size:18px;font-weight:700;color:#047857;margin:0 0 16px;\">Absence annul\u00e9e</p>"
+            + "<p style=\"font-size:15px;margin:0 0 12px;\">Bonjour " + escapeHtml(recipientName) + ",</p>"
+            + "<p style=\"font-size:15px;color:#4B5563;line-height:1.6;\">"
+            + "<strong>" + escapeHtml(employeNom) + "</strong> a annul\u00e9 son alerte d'absence pour le "
+            + "<strong style=\"color:#047857;\">" + date + "</strong>. Aucune action n'est requise.</p>"
+            + "</td></tr>"
+            + buildSimpleFooter()
+            + "</table></body></html>";
+    }
+
+    // ── Registration emails ────────────────────────────────────────────────
+
+    public String buildRegistrationRequestConfirmationHtml(String nameSafe, String orgSafe, String year) {
+        return buildEmailShell(year,
+            nameSafe + ", votre demande pour " + orgSafe + " a \u00e9t\u00e9 re\u00e7ue. / "
+            + "Your request for " + orgSafe + " has been received.")
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">Votre demande a \u00e9t\u00e9 re\u00e7ue</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Bonjour " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Nous avons bien re\u00e7u votre demande d\u2019inscription pour l\u2019organisation "
+            + "<strong style=\"color:#047857;\">" + orgSafe + "</strong>.</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Notre \u00e9quipe va examiner votre dossier dans les <strong>2 \u00e0 5 jours ouvrables</strong>. "
+            + "Vous recevrez une r\u00e9ponse par email d\u00e8s qu\u2019une d\u00e9cision aura \u00e9t\u00e9 prise.</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Si vous avez des questions, contactez-nous \u00e0 "
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">Your request has been received</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Dear " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "We have received your registration request for <strong style=\"color:#047857;\">"
+            + orgSafe + "</strong>.</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Our team will review your application within <strong>2 to 5 business days</strong>. "
+            + "You will receive an email once a decision has been made.</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, reach us at "
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+    }
+
+    public String buildRegistrationRequestInternalNotificationHtml(
+            String nameSafe, String emailSafe, String orgSafe,
+            String paysSafe, String provSafe, String planSafe,
+            String empStr, String billSafe, String msgSafe, String year) {
+
+        String rowStyle   = "padding:6px 0;font-size:14px;color:#4B5563;border-bottom:1px solid #F3F4F6;";
+        String labelStyle = "font-weight:600;color:#1F2937;width:140px;vertical-align:top;";
+
+        return buildEmailShell(year,
+            "Nouvelle demande d\u2019inscription de " + orgSafe + " (" + emailSafe + ")")
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;\">"
+            + "Nouvelle demande d\u2019inscription</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Une nouvelle demande vient d\u2019\u00eatre soumise via le formulaire public.</p>\n"
+
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" "
+            + "style=\"border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;\">\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Organisation</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + orgSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Contact</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + nameSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Email</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">"
+            + "<a href=\"mailto:" + emailSafe + "\" style=\"color:#047857;\">" + emailSafe + "</a></td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Pays</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + paysSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Province</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + provSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Forfait</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + planSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Employ\u00e9s</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + empStr + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "\">Facturation</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;\">" + billSafe + "</td></tr>\n"
+
+            + "<tr><td style=\"" + rowStyle + "padding:10px 12px !important;" + labelStyle + "border-bottom:none;\">Message</td>"
+            + "<td style=\"" + rowStyle + "padding:10px 12px !important;border-bottom:none;\">" + msgSafe + "</td></tr>\n"
+
+            + "</table>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+    }
+
+    public String buildRegistrationRequestRejectionHtml(
+            String nameSafe, String orgSafe, String reasonSafe, String year) {
+
+        return buildEmailShell(year,
+            nameSafe + ", suite donn\u00e9e \u00e0 votre demande pour " + orgSafe + ". / "
+            + "Follow-up on your request for " + orgSafe + ".")
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#1F2937;\">Suite donn\u00e9e \u00e0 votre demande</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Bonjour " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "Nous avons examin\u00e9 votre demande d\u2019inscription pour l\u2019organisation "
+            + "<strong>" + orgSafe + "</strong>. "
+            + "Nous ne sommes malheureusement pas en mesure de donner suite \u00e0 votre candidature \u00e0 ce stade.</p>\n"
+            + "<p style=\"margin:0 0 4px;font-size:14px;font-weight:700;color:#1F2937;\">Motif communiqu\u00e9\u00a0:</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:14px;color:#4B5563;background:#F3F4F6;"
+            + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
+            + reasonSafe + "</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Pour toute question, contactez-nous \u00e0 "
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + "<tr><td style=\"padding:0 32px;\">"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">"
+            + "<tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#1F2937;\">Follow-up on your registration request</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Dear " + nameSafe + ",</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">"
+            + "We have reviewed your registration request for <strong>" + orgSafe + "</strong>. "
+            + "Unfortunately, we are unable to move forward with your application at this time.</p>\n"
+            + "<p style=\"margin:0 0 4px;font-size:14px;font-weight:700;color:#1F2937;\">Reason provided:</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:14px;color:#4B5563;background:#F3F4F6;"
+            + "padding:12px 16px;border-radius:6px;border-left:3px solid #D1D5DB;line-height:1.6;\">"
+            + reasonSafe + "</p>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">If you have any questions, please contact us at "
+            + "<a href=\"mailto:" + contactAddress + "\" style=\"color:#047857;\">" + contactAddress + "</a>.</p>\n"
+            + "</td></tr>\n"
+
+            + buildEmailFooter(year);
+    }
+
+    // ── Shared structural helpers ──────────────────────────────────────────
+
+    public String buildEmailShell(String year, String preheaderText) {
+        return "<!DOCTYPE html>\n"
+            + "<html lang=\"fr\">\n"
+            + "<head>\n"
+            + "<meta charset=\"UTF-8\"/>\n"
+            + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"/>\n"
+            + "<meta name=\"color-scheme\" content=\"light\"/>\n"
+            + "<meta name=\"format-detection\" content=\"telephone=no,date=no,address=no\"/>\n"
+            + "<title>Schedy</title>\n"
+            + "</head>\n"
+            + "<body style=\"margin:0;padding:0;background-color:#FFFFFF;"
+            + "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+            + "-webkit-text-size-adjust:100%;color:#1F2937;\">\n"
+            + "<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#FFFFFF;\">"
+            + escapeHtml(preheaderText)
+            + "&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr><td style=\"height:4px;background:linear-gradient(90deg,#6EE7B7,#10B981,#047857);"
+            + "font-size:0;line-height:0;\">&nbsp;</td></tr>\n"
+            + "<tr><td style=\"padding:32px 32px 24px;\">\n" + CID_LOGO_IMG + "\n</td></tr>\n";
+    }
+
+    public String buildEmailFooter(String year) {
+        return "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background-color:#F9FAFB;\">\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"vertical-align:middle;\">\n"
+            + "<p style=\"margin:0 0 2px;font-size:13px;font-weight:700;color:#1F2937;\">Schedy</p>\n"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;line-height:1.4;\">"
+            + "Planning, pointage et cong\u00e9s / Scheduling, time clock &amp; leave</p>\n"
+            + "</td>\n"
+            + "<td align=\"right\" style=\"vertical-align:middle;font-size:11px;color:#D1D5DB;\">"
+            + "\u00a9 " + year + " Schedy</td>\n"
+            + "</tr></table>\n"
+            + "</td></tr>\n"
+            + "</table>\n"
+            + "</body></html>";
+    }
+
+    public String buildSection(String name, String ctaLink, String hours,
+                               String title, String greeting,
+                               String intro, String featureIntro,
+                               String[] features, String closingText,
+                               String btnText,
+                               String expiryText, String ignoreText) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<tr><td style=\"padding:28px 32px 0;\">\n");
+
+        sb.append("<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:#047857;line-height:1.3;\">")
+          .append(title).append("</p>\n");
+
+        sb.append("<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;line-height:1.65;\">")
+          .append(greeting).append(" ").append(name).append(",</p>\n");
+
+        sb.append("<p style=\"margin:0 0 8px;font-size:15px;color:#4B5563;line-height:1.65;\">")
+          .append(intro).append("</p>\n");
+
+        if (featureIntro != null && !featureIntro.isBlank()) {
+            sb.append("<p style=\"margin:0 0 12px;font-size:15px;color:#4B5563;line-height:1.65;\">")
+              .append(featureIntro).append("</p>\n");
+        }
+
+        for (String feat : features) {
+            sb.append(buildFeatureRow("#10B981", feat));
+        }
+
+        if (closingText != null && !closingText.isBlank()) {
+            sb.append("<p style=\"margin:20px 0 0;font-size:15px;color:#4B5563;line-height:1.65;\">")
+              .append(closingText.replace("\n\n", "<br/><br/>")).append("</p>\n");
+        }
+
+        sb.append("<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" ")
+          .append("style=\"margin:24px 0;\">\n<tr><td>\n")
+          .append("<a href=\"").append(ctaLink).append("\" target=\"_blank\" ")
+          .append("style=\"display:inline-block;background-color:#047857;color:#FFFFFF;")
+          .append("font-size:15px;font-weight:600;text-decoration:none;padding:13px 36px;")
+          .append("border-radius:6px;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;\">")
+          .append(escapeHtml(btnText)).append("</a>\n")
+          .append("</td></tr></table>\n");
+
+        if (expiryText != null && !expiryText.isBlank()) {
+            sb.append("<p style=\"margin:0 0 4px;font-size:13px;color:#6B7280;line-height:1.5;\">")
+              .append(expiryText).append("</p>\n");
+        }
+        if (ignoreText != null && !ignoreText.isBlank()) {
+            sb.append("<p style=\"margin:0;font-size:13px;color:#9CA3AF;line-height:1.5;\">")
+              .append(ignoreText).append("</p>\n");
+        }
+
+        sb.append("</td></tr>\n");
+        return sb.toString();
+    }
+
+    public String buildFeatureRow(String dotColor, String text) {
+        return "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">\n"
+            + "<tr>\n"
+            + "<td style=\"width:20px;vertical-align:top;padding:4px 0;\">"
+            + "<div style=\"width:6px;height:6px;border-radius:50%;background-color:" + dotColor + ";"
+            + "margin-top:7px;\"></div></td>\n"
+            + "<td style=\"padding:4px 0;font-size:14px;color:#374151;line-height:1.55;\">"
+            + escapeHtml(text) + "</td>\n"
+            + "</tr></table>\n";
+    }
+
+    public static String escapeHtml(String input) {
+        if (input == null) return "";
+        return input.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    /** Exposes the configured contact address so EmailService can use it as a recipient. */
+    public String getContactAddress() {
+        return contactAddress;
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────
+
+    private String buildSimpleFooter() {
+        return "<tr><td style=\"padding:24px 32px;border-top:1px solid #E5E7EB;background:#F9FAFB;\">"
+            + "<p style=\"margin:0;font-size:13px;font-weight:700;\">Schedy</p>"
+            + "<p style=\"margin:0;font-size:11px;color:#9CA3AF;\">Planning, pointage et cong\u00e9s</p>"
+            + "</td></tr>";
+    }
+
+    private static String currentYear() {
+        return String.valueOf(java.time.Year.now().getValue());
+    }
+}

@@ -21,7 +21,6 @@ import com.schedy.repository.SiteRepository;
 import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
-import com.schedy.util.LocaleUtils;
 import com.schedy.util.TotpEncryptionUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +28,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,8 +82,11 @@ public class EmployeService {
     @Transactional(readOnly = true)
     public Employe findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
-        return employeRepository.findByIdAndOrganisationId(id, orgId)
+        Employe employe = employeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employe", id));
+        // SEC-12: EMPLOYEE may only read their own profile (prevents PII enumeration)
+        checkOwnershipIfEmployee(employe.getId());
+        return employe;
     }
 
     /**
@@ -173,8 +177,7 @@ public class EmployeService {
                 userRepository.save(newUser);
                 // Best-effort email — do not roll back if sending fails
                 try {
-                    boolean isFrench = resolveIsFrench(orgId);
-                    emailService.sendInvitationEmail(dto.email(), dto.nom(), rawToken, isFrench);
+                    emailService.sendInvitationEmail(dto.email(), dto.nom(), rawToken);
                 } catch (Exception e) {
                     log.error("Failed to send invitation email to {} for new employee {}: {}",
                             dto.email(), employe.getId(), e.getMessage());
@@ -415,14 +418,13 @@ public class EmployeService {
                 user.setRole(User.UserRole.MANAGER);
                 userRepository.save(user);
                 // Send promotion notification email (best-effort)
-                boolean isFrench = resolveIsFrench(orgId);
                 try {
-                    emailService.sendPromotionEmail(employe.getEmail(), employe.getNom(), isFrench);
+                    emailService.sendPromotionEmail(employe.getEmail(), employe.getNom());
                 } catch (Exception e) {
                     log.error("Failed to send promotion email to {}: {}", employe.getEmail(), e.getMessage());
                 }
                 // Create an org-scoped announcement visible to the whole organisation
-                createPromotionAnnouncement(employe.getNom(), orgId, isFrench);
+                createPromotionAnnouncement(employe.getNom(), orgId);
                 return java.util.Map.of("emailSent", true, "email", employe.getEmail());
             } else {
                 if (employe.getEmail() == null || employe.getEmail().isBlank()) {
@@ -454,8 +456,7 @@ public class EmployeService {
                 // Send invitation email (best-effort — do not roll back if email fails)
                 boolean emailSent = false;
                 try {
-                    boolean isFrench = resolveIsFrench(orgId);
-                    emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken, isFrench);
+                    emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken);
                     emailSent = true;
                 } catch (Exception e) {
                     log.error("Failed to send invitation email to {} for employee {}: {}",
@@ -501,9 +502,8 @@ public class EmployeService {
         user.setInvitationTokenExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(invitationExpiryHours)));
         userRepository.save(user);
 
-        boolean isFrench = resolveIsFrench(orgId);
         try {
-            emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken, isFrench);
+            emailService.sendInvitationEmail(employe.getEmail(), employe.getNom(), rawToken);
             log.info("Invitation email resent to {} for employee {}", employe.getEmail(), employeId);
         } catch (Exception e) {
             log.error("Failed to resend invitation email to {} for employee {}: {}",
@@ -512,21 +512,10 @@ public class EmployeService {
     }
 
     /**
-     * Determines if the organisation's primary language is French,
-     * based on the pays (ISO alpha-2/3) code.
-     * Delegates to {@link LocaleUtils#isFrenchSpeaking(String)} for the actual locale check.
-     */
-    private boolean resolveIsFrench(String orgId) {
-        return organisationRepository.findById(orgId)
-                .map(org -> LocaleUtils.isFrenchSpeaking(org.getPays()))
-                .orElse(false);
-    }
-
-    /**
      * Creates an org-scoped INFO announcement that a new Manager has been promoted.
      * The announcement expires after 7 days and is only visible within the given organisation.
      */
-    private void createPromotionAnnouncement(String employeeName, String orgId, boolean isFrench) {
+    private void createPromotionAnnouncement(String employeeName, String orgId) {
         // Both languages stored with ||| separator — frontend picks by active lang
         String titleFr = "Nouveau responsable\u00a0: " + employeeName;
         String titleEn = "New manager: " + employeeName;
@@ -540,6 +529,43 @@ public class EmployeService {
                 .expiresAt(java.time.OffsetDateTime.now().plusDays(7))
                 .build();
         announcementRepository.save(announcement);
+    }
+
+    /**
+     * SEC-12: Enforces row-level ownership for the EMPLOYEE role on employee reads.
+     *
+     * <p>ADMIN and MANAGER may read any employee in their organisation (tenant scoping
+     * already enforced upstream). EMPLOYEE may only read their own profile; any attempt
+     * to enumerate IDs and access another employee's PII (email, phone, date of birth)
+     * results in a 403 Forbidden response.
+     *
+     * <p>The check is intentionally lenient when no SecurityContext is present
+     * (e.g. unit tests that exercise the service without setting up authentication)
+     * — in that case the call is treated as a trusted internal invocation.
+     *
+     * @param targetEmployeId the employeId of the resource being accessed
+     * @throws ResponseStatusException 403 Forbidden if the caller is an EMPLOYEE
+     *         and {@code targetEmployeId} does not match their own employeId
+     */
+    private void checkOwnershipIfEmployee(String targetEmployeId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities() == null) {
+            return;
+        }
+        boolean isEmployee = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"));
+        if (!isEmployee) {
+            return;
+        }
+        // Caller is strictly an EMPLOYEE — verify ownership
+        String callerEmail = auth.getName();
+        String callerEmployeId = userRepository.findByEmail(callerEmail)
+                .map(User::getEmployeId)
+                .orElse(null);
+        if (callerEmployeId == null || !callerEmployeId.equals(targetEmployeId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Acces refuse: vous ne pouvez consulter que vos propres donnees");
+        }
     }
 
 }

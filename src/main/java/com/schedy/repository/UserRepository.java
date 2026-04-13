@@ -1,15 +1,15 @@
 package com.schedy.repository;
 
 import com.schedy.entity.User;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
@@ -19,13 +19,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByOrganisationId(String organisationId);
     List<User> findByOrganisationIdAndRole(String organisationId, User.UserRole role);
     long countByOrganisationId(String organisationId);
-
     @Query("SELECT u.organisationId, COUNT(u) FROM User u WHERE u.organisationId IN :orgIds GROUP BY u.organisationId")
     List<Object[]> countGroupedByOrganisationId(@Param("orgIds") Collection<String> orgIds);
-
     List<User> findByOrganisationIdAndRoleIn(String organisationId, List<User.UserRole> roles);
     Optional<User> findFirstByOrganisationIdAndRole(String organisationId, User.UserRole role);
     Optional<User> findByInvitationToken(String invitationToken);
     Optional<User> findByPasswordResetToken(String passwordResetToken);
+    @Modifying @Transactional
     void deleteByOrganisationId(String organisationId);
 }

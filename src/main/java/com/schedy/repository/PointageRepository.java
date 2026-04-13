@@ -1,16 +1,16 @@
 package com.schedy.repository;
 
 import com.schedy.entity.Pointage;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
 import com.schedy.entity.StatutPointage;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
-
 @Repository
 public interface PointageRepository extends JpaRepository<Pointage, String> {
     List<Pointage> findByEmployeIdOrderByHorodatageDesc(String employeId);
@@ -21,7 +21,6 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
             OffsetDateTime start, OffsetDateTime end);
     Optional<Pointage> findTopByEmployeIdOrderByHorodatageDesc(String employeId);
     List<Pointage> findByStatut(StatutPointage statut);
-
     // Multi-site queries
     List<Pointage> findBySiteId(String siteId);
     List<Pointage> findByEmployeIdAndSiteId(String employeId, String siteId);
@@ -30,7 +29,6 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     List<Pointage> findBySiteIdAndHorodatageBetweenOrderByHorodatageDesc(
             String siteId, OffsetDateTime start, OffsetDateTime end);
     Optional<Pointage> findTopByEmployeIdAndSiteIdOrderByHorodatageDesc(String employeId, String siteId);
-
     // Organisation-scoped queries
     Page<Pointage> findByOrganisationId(String organisationId, Pageable pageable);
     List<Pointage> findByOrganisationId(String organisationId);
@@ -45,9 +43,10 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     Optional<Pointage> findTopByEmployeIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String organisationId);
     Optional<Pointage> findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String siteId, String organisationId);
     List<Pointage> findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String employeId, String organisationId, OffsetDateTime start, OffsetDateTime end);
+    @Modifying @Transactional
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
+    @Modifying @Transactional
     void deleteByOrganisationId(String organisationId);
-
     /** Count all time-clock records for a given employee regardless of statut. */
     long countByEmployeIdAndOrganisationId(String employeId, String organisationId);
 }

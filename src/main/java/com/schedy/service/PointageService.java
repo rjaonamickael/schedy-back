@@ -14,10 +14,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -47,13 +49,18 @@ public class PointageService {
     @Transactional(readOnly = true)
     public Pointage findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
-        return pointageRepository.findByIdAndOrganisationId(id, orgId)
+        Pointage pointage = pointageRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pointage", id));
+        // SEC-11: EMPLOYEE may only read their own pointage (prevents IDOR enumeration)
+        checkOwnershipIfEmployee(pointage.getEmployeId());
+        return pointage;
     }
 
     @Transactional(readOnly = true)
     public List<Pointage> findByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
+        // SEC-11: EMPLOYEE may only read their own pointages
+        checkOwnershipIfEmployee(employeId);
         return pointageRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
     }
 
@@ -84,12 +91,16 @@ public class PointageService {
     @Transactional(readOnly = true)
     public List<Pointage> findByEmployeIdAndSiteId(String employeId, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
+        // SEC-11: EMPLOYEE may only read their own pointages
+        checkOwnershipIfEmployee(employeId);
         return pointageRepository.findByEmployeIdAndSiteIdAndOrganisationId(employeId, siteId, orgId);
     }
 
     @Transactional(readOnly = true)
     public List<Pointage> findTodayByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
+        // SEC-11: EMPLOYEE may only read their own pointages
+        checkOwnershipIfEmployee(employeId);
         ZoneId zone = resolveOrgZone(orgId);
         OffsetDateTime startOfDay = LocalDate.now(zone).atStartOfDay(zone).toOffsetDateTime();
         OffsetDateTime endOfDay = LocalDate.now(zone).atTime(LocalTime.MAX).atZone(zone).toOffsetDateTime();
@@ -280,5 +291,42 @@ public class PointageService {
         Pointage saved = pointageRepository.save(pointage);
         log.info("Pointage created: employe={}, type={}, site={}, statut={}", employeId, type, siteId, statut);
         return saved;
+    }
+
+    /**
+     * SEC-11: Enforces row-level ownership for the EMPLOYEE role on pointage reads.
+     *
+     * <p>ADMIN and MANAGER may read any pointage in their organisation (tenant scoping
+     * already enforced upstream). EMPLOYEE may only read pointages that belong to
+     * themselves; any attempt to enumerate IDs and access another employee's data
+     * results in a 403 Forbidden response.
+     *
+     * <p>The check is intentionally lenient when no SecurityContext is present
+     * (e.g. unit tests that exercise the service without setting up authentication)
+     * — in that case the call is treated as a trusted internal invocation.
+     *
+     * @param targetEmployeId the employeId of the resource being accessed
+     * @throws ResponseStatusException 403 Forbidden if the caller is an EMPLOYEE
+     *         and {@code targetEmployeId} does not match their own employeId
+     */
+    private void checkOwnershipIfEmployee(String targetEmployeId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities() == null) {
+            return;
+        }
+        boolean isEmployee = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_EMPLOYEE"));
+        if (!isEmployee) {
+            return;
+        }
+        // Caller is strictly an EMPLOYEE — verify ownership
+        String callerEmail = auth.getName();
+        String callerEmployeId = userRepository.findByEmail(callerEmail)
+                .map(User::getEmployeId)
+                .orElse(null);
+        if (callerEmployeId == null || !callerEmployeId.equals(targetEmployeId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Acces refuse: vous ne pouvez consulter que vos propres donnees");
+        }
     }
 }
