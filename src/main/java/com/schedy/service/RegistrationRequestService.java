@@ -61,6 +61,25 @@ public class RegistrationRequestService {
                 "La province est obligatoire pour le Canada.");
         }
 
+        // Beta hard cap : Essentials tier allows up to 15 employees.
+        // Pro tier (which would unlock more) is not yet available, so any request
+        // exceeding the cap is rejected at submission time. The frontend enforces
+        // the same constraint on the org step (rr-step-org max="15"), this is the
+        // backend defence-in-depth against direct API calls.
+        if (dto.employeeCount() != null && dto.employeeCount() > 15) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Pendant la beta, l'inscription est limitée à 15 employés. "
+                + "Pour une équipe plus grande, écrivez à contact@schedy.work.");
+        }
+
+        // Pro tier is not yet available — refuse desiredPlan='pro' to keep the
+        // submission surface consistent with the visible UI.
+        if (dto.desiredPlan() != null && "pro".equalsIgnoreCase(dto.desiredPlan())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Le plan Pro n'est pas encore disponible pendant la beta. "
+                + "Veuillez choisir le plan Essentials.");
+        }
+
         RegistrationRequest entity = RegistrationRequest.builder()
                 .organisationName(dto.organisationName())
                 .contactName(dto.contactName())
