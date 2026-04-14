@@ -55,6 +55,7 @@ public class OrganisationService {
                 .adresse(dto.adresse())
                 .telephone(dto.telephone())
                 .pays(dto.pays())
+                .dateRenouvellementConges(dto.dateRenouvellementConges() != null ? dto.dateRenouvellementConges() : "01-01")
                 .build();
         return organisationRepository.save(organisation);
     }
@@ -68,6 +69,9 @@ public class OrganisationService {
         organisation.setAdresse(dto.adresse());
         organisation.setTelephone(dto.telephone());
         organisation.setPays(dto.pays());
+        if (dto.dateRenouvellementConges() != null) {
+            organisation.setDateRenouvellementConges(dto.dateRenouvellementConges());
+        }
         Organisation saved = organisationRepository.save(organisation);
         cacheStore.evict(id);
         return saved;

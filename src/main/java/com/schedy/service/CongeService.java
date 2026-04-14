@@ -18,8 +18,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class CongeService {
     private final BanqueCongeRepository banqueCongeRepository;
     private final DemandeCongeRepository demandeCongeRepository;
     private final JourFerieRepository jourFerieRepository;
+    private final EmployeRepository employeRepository;
     private final UserRepository userRepository;
     private final TenantContext tenantContext;
 
@@ -57,21 +61,30 @@ public class CongeService {
     @Transactional
     public TypeConge createType(TypeCongeDto dto) {
         String orgId = tenantContext.requireOrganisationId();
+        TypeLimite typeLimite = parseTypeLimite(dto.typeLimite());
         TypeConge type = TypeConge.builder()
                 .nom(dto.nom())
-                .categorie(parseCategorieConge(dto.categorie()))
+                .paye(dto.paye())
                 .unite(parseUniteConge(dto.unite()))
                 .couleur(dto.couleur())
-                .modeQuota(dto.modeQuota())
-                .quotaIllimite(dto.quotaIllimite())
-                .autoriserNegatif(dto.autoriserNegatif())
-                .accrualMontant(dto.accrualMontant())
-                .accrualFrequence(dto.accrualFrequence() != null ? parseFrequenceAccrual(dto.accrualFrequence()) : null)
-                .reportMax(dto.reportMax())
-                .reportDuree(dto.reportDuree())
+                .typeLimite(typeLimite)
+                .quotaAnnuel(typeLimite == TypeLimite.ENVELOPPE_ANNUELLE ? dto.quotaAnnuel() : null)
+                .accrualMontant(typeLimite == TypeLimite.ACCRUAL ? dto.accrualMontant() : null)
+                .accrualFrequence(typeLimite == TypeLimite.ACCRUAL && dto.accrualFrequence() != null
+                        ? parseFrequenceAccrual(dto.accrualFrequence()) : null)
+                .autoriserDepassement(typeLimite == TypeLimite.ENVELOPPE_ANNUELLE && dto.autoriserDepassement())
+                .dateDebutValidite(dto.dateDebutValidite())
+                .dateFinValidite(dto.dateFinValidite())
                 .organisationId(orgId)
                 .build();
-        return typeCongeRepository.save(type);
+        TypeConge saved = typeCongeRepository.save(type);
+
+        // Auto-provision : every employee in the org gets a banque for this new type.
+        // Each banque starts at the type default quota; per-employee overrides happen
+        // on the banque directly afterwards. The link is the invariant : (employe, type, org)
+        // always has exactly one banque.
+        provisionBanquesForType(saved, orgId);
+        return saved;
     }
 
     @Transactional
@@ -79,25 +92,130 @@ public class CongeService {
         String orgId = tenantContext.requireOrganisationId();
         TypeConge type = typeCongeRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Type de conge", id));
+        TypeLimite typeLimite = parseTypeLimite(dto.typeLimite());
         type.setNom(dto.nom());
-        type.setCategorie(parseCategorieConge(dto.categorie()));
+        type.setPaye(dto.paye());
         type.setUnite(parseUniteConge(dto.unite()));
         type.setCouleur(dto.couleur());
-        type.setModeQuota(dto.modeQuota());
-        type.setQuotaIllimite(dto.quotaIllimite());
-        type.setAutoriserNegatif(dto.autoriserNegatif());
-        type.setAccrualMontant(dto.accrualMontant());
-        type.setAccrualFrequence(dto.accrualFrequence() != null ? parseFrequenceAccrual(dto.accrualFrequence()) : null);
-        type.setReportMax(dto.reportMax());
-        type.setReportDuree(dto.reportDuree());
-        return typeCongeRepository.save(type);
+        type.setTypeLimite(typeLimite);
+        type.setQuotaAnnuel(typeLimite == TypeLimite.ENVELOPPE_ANNUELLE ? dto.quotaAnnuel() : null);
+        type.setAccrualMontant(typeLimite == TypeLimite.ACCRUAL ? dto.accrualMontant() : null);
+        type.setAccrualFrequence(typeLimite == TypeLimite.ACCRUAL && dto.accrualFrequence() != null
+                ? parseFrequenceAccrual(dto.accrualFrequence()) : null);
+        type.setAutoriserDepassement(typeLimite == TypeLimite.ENVELOPPE_ANNUELLE && dto.autoriserDepassement());
+        type.setDateDebutValidite(dto.dateDebutValidite());
+        type.setDateFinValidite(dto.dateFinValidite());
+        TypeConge saved = typeCongeRepository.save(type);
+
+        // Note : we deliberately DO NOT propagate quota changes to existing banques here.
+        // Admins are expected to override quotas per-employee for special contracts; an
+        // automatic sync would silently destroy those overrides. New banques created later
+        // (for new employees) will pick up the latest type.quotaAnnuel as their starting value.
+        // If a banque is missing for an existing employee (edge case), backfill it now.
+        provisionBanquesForType(saved, orgId);
+        return saved;
     }
 
-    private CategorieConge parseCategorieConge(String value) {
+    /**
+     * Ensures every employee in {@code orgId} has a {@link BanqueConge} for {@code type}.
+     * Idempotent : an employee who already has one is left untouched.
+     *
+     * @see #provisionBanquesForEmploye(String, String) for the symmetric direction
+     */
+    @Transactional
+    public void provisionBanquesForType(TypeConge type, String orgId) {
+        List<Employe> employes = employeRepository.findByOrganisationId(orgId);
+        if (employes.isEmpty()) return;
+
+        List<BanqueConge> existing = banqueCongeRepository.findByTypeCongeId(type.getId());
+        Set<String> existingEmployeIds = existing.stream()
+                .filter(b -> orgId.equals(b.getOrganisationId()))
+                .map(BanqueConge::getEmployeId)
+                .collect(Collectors.toSet());
+
+        LocalDate today = LocalDate.now();
+        LocalDate dateFin = today.plusYears(1);
+
+        int created = 0;
+        for (Employe emp : employes) {
+            if (existingEmployeIds.contains(emp.getId())) continue;
+            BanqueConge banque = BanqueConge.builder()
+                    .employeId(emp.getId())
+                    .typeCongeId(type.getId())
+                    .quota(initialQuotaFor(type))
+                    .utilise(0)
+                    .enAttente(0)
+                    .dateDebut(today)
+                    .dateFin(dateFin)
+                    .organisationId(orgId)
+                    .build();
+            banqueCongeRepository.save(banque);
+            created++;
+        }
+        if (created > 0) {
+            log.info("Auto-provisioned {} banque(s) for type '{}' in org {}", created, type.getNom(), orgId);
+        }
+    }
+
+    /**
+     * Ensures the new employee has a {@link BanqueConge} for every type in {@code orgId}.
+     * Called from {@code EmployeService.create()}. Idempotent.
+     */
+    @Transactional
+    public void provisionBanquesForEmploye(String employeId, String orgId) {
+        List<TypeConge> types = typeCongeRepository.findByOrganisationId(orgId);
+        if (types.isEmpty()) return;
+
+        List<BanqueConge> existing = banqueCongeRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
+        Set<String> existingTypeIds = existing.stream()
+                .map(BanqueConge::getTypeCongeId)
+                .collect(Collectors.toSet());
+
+        LocalDate today = LocalDate.now();
+        LocalDate dateFin = today.plusYears(1);
+
+        int created = 0;
+        for (TypeConge type : types) {
+            if (existingTypeIds.contains(type.getId())) continue;
+            BanqueConge banque = BanqueConge.builder()
+                    .employeId(employeId)
+                    .typeCongeId(type.getId())
+                    .quota(initialQuotaFor(type))
+                    .utilise(0)
+                    .enAttente(0)
+                    .dateDebut(today)
+                    .dateFin(dateFin)
+                    .organisationId(orgId)
+                    .build();
+            banqueCongeRepository.save(banque);
+            created++;
+        }
+        if (created > 0) {
+            log.info("Auto-provisioned {} banque(s) for employe {} in org {}", created, employeId, orgId);
+        }
+    }
+
+    /**
+     * Initial quota value for a freshly-provisioned banque, depending on the type strategy :
+     * <ul>
+     *   <li>{@code ENVELOPPE_ANNUELLE} → the type's annual quota (or 0 if unset)</li>
+     *   <li>{@code ACCRUAL} → 0 (will be credited by the scheduler)</li>
+     *   <li>{@code AUCUNE} → null (= no limit, displayed as ∞)</li>
+     * </ul>
+     */
+    private Double initialQuotaFor(TypeConge type) {
+        return switch (type.getTypeLimite()) {
+            case ENVELOPPE_ANNUELLE -> type.getQuotaAnnuel() != null ? type.getQuotaAnnuel() : 0.0;
+            case ACCRUAL -> 0.0;
+            case AUCUNE -> null;
+        };
+    }
+
+    private TypeLimite parseTypeLimite(String value) {
         try {
-            return CategorieConge.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new BusinessRuleException("Valeur invalide pour categorie: " + value);
+            return TypeLimite.valueOf(value);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new BusinessRuleException("Valeur invalide pour typeLimite: " + value);
         }
     }
 
@@ -258,14 +376,16 @@ public class CongeService {
         // on the same (employe, typeConge, org) will serialize here.
         Optional<BanqueConge> lockedBanque = banqueCongeRepository.findForUpdate(dto.employeId(), dto.typeCongeId(), orgId);
 
-        // Quota verification with the locked row
+        // Quota verification with the locked row.
+        // Skip check if the type has no strict limit (AUCUNE) or the admin allowed overdraft.
         lockedBanque.ifPresent(banque -> {
             if (banque.getQuota() != null) {
                 TypeConge typeConge = typeCongeRepository.findByIdAndOrganisationId(dto.typeCongeId(), orgId)
                         .orElse(null);
-                boolean autoriserNegatif = typeConge != null && typeConge.isAutoriserNegatif();
-                boolean quotaIllimite = typeConge != null && typeConge.isQuotaIllimite();
-                if (!quotaIllimite && !autoriserNegatif) {
+                if (typeConge == null) return;
+                boolean sansLimite = typeConge.getTypeLimite() == TypeLimite.AUCUNE;
+                boolean depassementAutorise = typeConge.isAutoriserDepassement();
+                if (!sansLimite && !depassementAutorise) {
                     double disponible = banque.getQuota() - banque.getUtilise() - banque.getEnAttente();
                     if (dto.duree() > disponible) {
                         throw new BusinessRuleException(

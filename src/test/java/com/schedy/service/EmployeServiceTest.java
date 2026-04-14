@@ -47,6 +47,7 @@ class EmployeServiceTest {
     @Mock private EmailService emailService;
     @Mock private OrganisationRepository organisationRepository;
     @Mock private PlatformAnnouncementRepository announcementRepository;
+    @Mock private CongeService congeService;
 
     @InjectMocks private EmployeService employeService;
 

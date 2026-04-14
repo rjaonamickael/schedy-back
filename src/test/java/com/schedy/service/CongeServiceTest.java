@@ -39,6 +39,7 @@ class CongeServiceTest {
     @Mock private BanqueCongeRepository banqueCongeRepository;
     @Mock private DemandeCongeRepository demandeCongeRepository;
     @Mock private JourFerieRepository jourFerieRepository;
+    @Mock private EmployeRepository employeRepository;
     @Mock private TenantContext tenantContext;
 
     @InjectMocks private CongeService congeService;
@@ -74,11 +75,12 @@ class CongeServiceTest {
                 .organisationId(ORG_ID).build();
     }
 
-    private TypeConge buildTypeConge(boolean quotaIllimite, boolean autoriserNegatif) {
+    private TypeConge buildTypeConge(boolean sansLimite, boolean autoriserDepassement) {
         return TypeConge.builder()
                 .id(TYPE_ID).nom("Conge paye")
-                .categorie(CategorieConge.paye).unite(UniteConge.jours)
-                .quotaIllimite(quotaIllimite).autoriserNegatif(autoriserNegatif)
+                .paye(true).unite(UniteConge.jours)
+                .typeLimite(sansLimite ? TypeLimite.AUCUNE : TypeLimite.ENVELOPPE_ANNUELLE)
+                .autoriserDepassement(autoriserDepassement)
                 .organisationId(ORG_ID).build();
     }
 
@@ -152,15 +154,15 @@ class CongeServiceTest {
         }
 
         @Test
-        @DisplayName("skips quota check when typeConge.quotaIllimite is true")
-        void createDemande_quotaIllimite_noQuotaCheck() {
+        @DisplayName("skips quota check when typeLimite is AUCUNE")
+        void createDemande_sansLimite_noQuotaCheck() {
             // Quota is exhausted on paper, but type is unlimited — request must succeed
             BanqueConge banque = buildBanque(5.0, 5.0, 0.0);
-            TypeConge illimite = buildTypeConge(true, false);
+            TypeConge sansLimite = buildTypeConge(true, false);
             when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(typeCongeRepository.findByIdAndOrganisationId(TYPE_ID, ORG_ID))
-                    .thenReturn(Optional.of(illimite));
+                    .thenReturn(Optional.of(sansLimite));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             // Should not throw even though disponible = 0
@@ -170,14 +172,14 @@ class CongeServiceTest {
         }
 
         @Test
-        @DisplayName("skips quota check when typeConge.autoriserNegatif is true")
-        void createDemande_autoriserNegatif_noQuotaCheck() {
+        @DisplayName("skips quota check when typeConge.autoriserDepassement is true")
+        void createDemande_autoriserDepassement_noQuotaCheck() {
             BanqueConge banque = buildBanque(5.0, 5.0, 0.0);
-            TypeConge negatifAllowed = buildTypeConge(false, true);
+            TypeConge depassementAllowed = buildTypeConge(false, true);
             when(banqueCongeRepository.findForUpdate(EMPLOYE_ID, TYPE_ID, ORG_ID))
                     .thenReturn(Optional.of(banque));
             when(typeCongeRepository.findByIdAndOrganisationId(TYPE_ID, ORG_ID))
-                    .thenReturn(Optional.of(negatifAllowed));
+                    .thenReturn(Optional.of(depassementAllowed));
             when(demandeCongeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             DemandeConge result = congeService.createDemande(buildDto(10.0));
@@ -505,6 +507,214 @@ class CongeServiceTest {
                     .thenReturn(Optional.empty());
 
             assertThrows(ResourceNotFoundException.class, () -> congeService.deleteType(TYPE_ID));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // provisionBanquesForType() / provisionBanquesForEmploye()
+    //
+    // Auto-provisioning enforces the invariant : every (employe, type, org) triple
+    // has exactly one BanqueConge. These tests cover both directions of the contract
+    // and the idempotency guarantee.
+    // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("provisionBanquesForType()")
+    class ProvisionBanquesForType {
+
+        private TypeConge buildEnvelopeType(double quotaAnnuel) {
+            return TypeConge.builder()
+                    .id(TYPE_ID).nom("Conge paye")
+                    .paye(true).unite(UniteConge.jours)
+                    .typeLimite(TypeLimite.ENVELOPPE_ANNUELLE)
+                    .quotaAnnuel(quotaAnnuel)
+                    .organisationId(ORG_ID).build();
+        }
+
+        private TypeConge buildAccrualType() {
+            return TypeConge.builder()
+                    .id(TYPE_ID).nom("Vacances accumulees")
+                    .paye(true).unite(UniteConge.jours)
+                    .typeLimite(TypeLimite.ACCRUAL)
+                    .accrualMontant(2.5)
+                    .organisationId(ORG_ID).build();
+        }
+
+        private TypeConge buildUnlimitedType() {
+            return TypeConge.builder()
+                    .id(TYPE_ID).nom("Maladie")
+                    .paye(true).unite(UniteConge.jours)
+                    .typeLimite(TypeLimite.AUCUNE)
+                    .organisationId(ORG_ID).build();
+        }
+
+        private Employe buildEmploye(String id) {
+            return Employe.builder().id(id).nom("Emp " + id).organisationId(ORG_ID).build();
+        }
+
+        @Test
+        @DisplayName("creates one banque per employee for an ENVELOPPE_ANNUELLE type")
+        void provisionForType_envelope_createsOnePerEmploye() {
+            TypeConge type = buildEnvelopeType(25.0);
+            when(employeRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(List.of(buildEmploye("e1"), buildEmploye("e2"), buildEmploye("e3")));
+            when(banqueCongeRepository.findByTypeCongeId(TYPE_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository, times(3)).save(captor.capture());
+            // All three banques must use the type's quota_annuel as default
+            captor.getAllValues().forEach(b -> {
+                assertThat(b.getQuota()).isEqualTo(25.0);
+                assertThat(b.getUtilise()).isEqualTo(0.0);
+                assertThat(b.getEnAttente()).isEqualTo(0.0);
+                assertThat(b.getTypeCongeId()).isEqualTo(TYPE_ID);
+                assertThat(b.getOrganisationId()).isEqualTo(ORG_ID);
+            });
+        }
+
+        @Test
+        @DisplayName("starts ACCRUAL banques at quota=0 (scheduler will credit)")
+        void provisionForType_accrual_startsAtZero() {
+            TypeConge type = buildAccrualType();
+            when(employeRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(List.of(buildEmploye("e1")));
+            when(banqueCongeRepository.findByTypeCongeId(TYPE_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository).save(captor.capture());
+            assertThat(captor.getValue().getQuota()).isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("AUCUNE banques have null quota (= unlimited)")
+        void provisionForType_aucune_nullQuota() {
+            TypeConge type = buildUnlimitedType();
+            when(employeRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(List.of(buildEmploye("e1")));
+            when(banqueCongeRepository.findByTypeCongeId(TYPE_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository).save(captor.capture());
+            assertThat(captor.getValue().getQuota()).isNull();
+        }
+
+        @Test
+        @DisplayName("is idempotent : skips employees that already have a banque for this type")
+        void provisionForType_idempotent() {
+            TypeConge type = buildEnvelopeType(25.0);
+            BanqueConge existingForE1 = BanqueConge.builder()
+                    .id("b-existing").employeId("e1").typeCongeId(TYPE_ID)
+                    .quota(99.0)  // a manual override that must NOT be touched
+                    .organisationId(ORG_ID).build();
+            when(employeRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(List.of(buildEmploye("e1"), buildEmploye("e2")));
+            when(banqueCongeRepository.findByTypeCongeId(TYPE_ID)).thenReturn(List.of(existingForE1));
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            // Only e2 should get a new banque ; e1's override is preserved
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository, times(1)).save(captor.capture());
+            assertThat(captor.getValue().getEmployeId()).isEqualTo("e2");
+        }
+
+        @Test
+        @DisplayName("no-ops when org has no employees")
+        void provisionForType_noEmployes() {
+            TypeConge type = buildEnvelopeType(25.0);
+            when(employeRepository.findByOrganisationId(ORG_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            verify(banqueCongeRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("uses 0 as fallback when ENVELOPPE_ANNUELLE has null quota_annuel")
+        void provisionForType_envelopeWithNullQuota_fallsBackToZero() {
+            TypeConge type = buildEnvelopeType(0.0);
+            type.setQuotaAnnuel(null);
+            when(employeRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(List.of(buildEmploye("e1")));
+            when(banqueCongeRepository.findByTypeCongeId(TYPE_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForType(type, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository).save(captor.capture());
+            assertThat(captor.getValue().getQuota()).isEqualTo(0.0);
+        }
+    }
+
+    @Nested
+    @DisplayName("provisionBanquesForEmploye()")
+    class ProvisionBanquesForEmploye {
+
+        private TypeConge buildType(String id, TypeLimite limite, Double quota) {
+            return TypeConge.builder()
+                    .id(id).nom("Type " + id)
+                    .paye(true).unite(UniteConge.jours)
+                    .typeLimite(limite).quotaAnnuel(quota)
+                    .organisationId(ORG_ID).build();
+        }
+
+        @Test
+        @DisplayName("creates one banque per existing type when employee joins")
+        void provisionForEmploye_createsOnePerType() {
+            when(typeCongeRepository.findByOrganisationId(ORG_ID)).thenReturn(List.of(
+                    buildType("t1", TypeLimite.ENVELOPPE_ANNUELLE, 25.0),
+                    buildType("t2", TypeLimite.AUCUNE, null),
+                    buildType("t3", TypeLimite.ACCRUAL, null)
+            ));
+            when(banqueCongeRepository.findByEmployeIdAndOrganisationId(EMPLOYE_ID, ORG_ID))
+                    .thenReturn(List.of());
+
+            congeService.provisionBanquesForEmploye(EMPLOYE_ID, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository, times(3)).save(captor.capture());
+            // Verify each type's expected initial quota
+            var byType = captor.getAllValues().stream()
+                    .collect(java.util.stream.Collectors.toMap(BanqueConge::getTypeCongeId, b -> b));
+            assertThat(byType.get("t1").getQuota()).isEqualTo(25.0);
+            assertThat(byType.get("t2").getQuota()).isNull();
+            assertThat(byType.get("t3").getQuota()).isEqualTo(0.0);
+        }
+
+        @Test
+        @DisplayName("is idempotent : skips types that already have a banque")
+        void provisionForEmploye_idempotent() {
+            BanqueConge existing = BanqueConge.builder()
+                    .employeId(EMPLOYE_ID).typeCongeId("t1")
+                    .quota(50.0).organisationId(ORG_ID).build();
+            when(typeCongeRepository.findByOrganisationId(ORG_ID)).thenReturn(List.of(
+                    buildType("t1", TypeLimite.ENVELOPPE_ANNUELLE, 25.0),
+                    buildType("t2", TypeLimite.ENVELOPPE_ANNUELLE, 10.0)
+            ));
+            when(banqueCongeRepository.findByEmployeIdAndOrganisationId(EMPLOYE_ID, ORG_ID))
+                    .thenReturn(List.of(existing));
+
+            congeService.provisionBanquesForEmploye(EMPLOYE_ID, ORG_ID);
+
+            ArgumentCaptor<BanqueConge> captor = ArgumentCaptor.forClass(BanqueConge.class);
+            verify(banqueCongeRepository, times(1)).save(captor.capture());
+            assertThat(captor.getValue().getTypeCongeId()).isEqualTo("t2");
+        }
+
+        @Test
+        @DisplayName("no-ops when org has no leave types")
+        void provisionForEmploye_noTypes() {
+            when(typeCongeRepository.findByOrganisationId(ORG_ID)).thenReturn(List.of());
+
+            congeService.provisionBanquesForEmploye(EMPLOYE_ID, ORG_ID);
+
+            verify(banqueCongeRepository, never()).save(any());
         }
     }
 }

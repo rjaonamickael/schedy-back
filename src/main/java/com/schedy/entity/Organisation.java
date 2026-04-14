@@ -71,4 +71,13 @@ public class Organisation {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    /**
+     * Date de renouvellement annuel des envelopes de conges (format MM-DD).
+     * Default '01-01' = 1er janvier. Utilisee par RenouvellementCongesScheduler
+     * pour reset les banques de type ENVELOPPE_ANNUELLE.
+     */
+    @Column(name = "date_renouvellement_conges", length = 5, nullable = false)
+    @Builder.Default
+    private String dateRenouvellementConges = "01-01";
 }

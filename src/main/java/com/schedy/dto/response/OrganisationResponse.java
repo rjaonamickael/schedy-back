@@ -8,7 +8,8 @@ public record OrganisationResponse(
         String domaine,
         String adresse,
         String telephone,
-        String pays
+        String pays,
+        String dateRenouvellementConges
 ) {
     public static OrganisationResponse from(Organisation o) {
         return new OrganisationResponse(
@@ -17,7 +18,8 @@ public record OrganisationResponse(
                 o.getDomaine(),
                 o.getAdresse(),
                 o.getTelephone(),
-                o.getPays()
+                o.getPays(),
+                o.getDateRenouvellementConges()
         );
     }
 }

@@ -63,6 +63,7 @@ public class EmployeService {
     private final PlatformAnnouncementRepository announcementRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final TotpEncryptionUtil pinEncryptionUtil;
+    private final CongeService congeService;
 
     @Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
@@ -159,6 +160,11 @@ public class EmployeService {
                 .siteIds(dto.siteIds() != null ? dto.siteIds() : Collections.emptyList())
                 .build();
         employeRepository.save(employe);
+
+        // Auto-provision : the new employee gets a banque for every existing leave type
+        // in the org (invariant : every (employe, type, org) triple has exactly one banque).
+        // Quotas can be overridden per-employee afterwards via the banque update endpoint.
+        congeService.provisionBanquesForEmploye(employe.getId(), orgId);
 
         // Create a User account for any employee who has an email address
         if (dto.email() != null && !dto.email().isBlank()) {

@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.schedy.config.JwtAuthFilter;
 import com.schedy.dto.DemandeCongeDto;
 import com.schedy.dto.TypeCongeDto;
-import com.schedy.entity.CategorieConge;
 import com.schedy.entity.DemandeConge;
 import com.schedy.entity.StatutDemande;
 import com.schedy.entity.TypeConge;
+import com.schedy.entity.TypeLimite;
 import com.schedy.entity.UniteConge;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
@@ -98,20 +98,22 @@ class CongeControllerTest {
 
     private TypeCongeDto validTypeDto() {
         return new TypeCongeDto(
-                TYPE_ID, "Vacances", "paye", "heures",
-                "#10B981", "fixe", false, false,
-                8.0, "mensuel", 40.0, 365, "org-1");
+                TYPE_ID, "Vacances", true, "heures",
+                "#10B981", "ENVELOPPE_ANNUELLE", 200.0,
+                null, null, false,
+                null, null, "org-1");
     }
 
     private TypeConge sampleType() {
         return TypeConge.builder()
                 .id(TYPE_ID)
                 .nom("Vacances")
-                .categorie(CategorieConge.paye)
+                .paye(true)
                 .unite(UniteConge.heures)
                 .couleur("#10B981")
-                .quotaIllimite(false)
-                .autoriserNegatif(false)
+                .typeLimite(TypeLimite.ENVELOPPE_ANNUELLE)
+                .quotaAnnuel(200.0)
+                .autoriserDepassement(false)
                 .organisationId("org-1")
                 .build();
     }
@@ -265,7 +267,7 @@ class CongeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(TYPE_ID))
                 .andExpect(jsonPath("$.nom").value("Vacances"))
-                .andExpect(jsonPath("$.categorie").value("paye"))
+                .andExpect(jsonPath("$.paye").value(true))
                 .andExpect(jsonPath("$.unite").value("heures"));
     }
 
@@ -285,9 +287,10 @@ class CongeControllerTest {
     @DisplayName("POST /types returns 400 when nom is blank")
     void createType_returns400OnBlankNom() throws Exception {
         TypeCongeDto invalid = new TypeCongeDto(
-                null, "", "paye", "heures",
-                "#10B981", "fixe", false, false,
-                8.0, "mensuel", 40.0, 365, "org-1");
+                null, "", true, "heures",
+                "#10B981", "ENVELOPPE_ANNUELLE", 200.0,
+                null, null, false,
+                null, null, "org-1");
 
         mockMvc.perform(post("/api/v1/conges/types")
                         .contentType(MediaType.APPLICATION_JSON)
