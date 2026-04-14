@@ -1,10 +1,13 @@
 package com.schedy.controller;
 
 import com.schedy.dto.EmployeDto;
+import com.schedy.dto.request.BatchPinRegenerationRequest;
 import com.schedy.dto.request.FindByPinRequest;
 import com.schedy.dto.request.UpdateSystemRoleRequest;
 import com.schedy.dto.response.EmployeImpactResponse;
 import com.schedy.dto.response.EmployeResponse;
+import com.schedy.dto.response.PinRegenerationResponse;
+import com.schedy.dto.response.PinSheetEntryResponse;
 import com.schedy.entity.User;
 import com.schedy.service.EmployeService;
 import jakarta.validation.Valid;
@@ -97,6 +100,44 @@ public class EmployeController {
         }
         String pin = employeService.getDecryptedPin(id);
         return ResponseEntity.ok(java.util.Map.of("pin", pin));
+    }
+
+    /**
+     * V36: Regenerates the kiosk PIN for a single employee on admin demand.
+     * Returns the new plaintext PIN so the caller can display + print it
+     * immediately. The old PIN is invalidated atomically — any kiosk attempt
+     * with the old PIN is rejected as soon as this transaction commits.
+     */
+    @PostMapping("/{id}/regenerate-pin")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<PinRegenerationResponse> regeneratePin(
+            @PathVariable String id,
+            @RequestParam(value = "motif", required = false) String motif) {
+        return ResponseEntity.ok(employeService.regenerateIndividualPin(id, motif));
+    }
+
+    /**
+     * V36: Regenerates kiosk PINs for a batch of employees in one transaction.
+     * Capped at 200 employees per call to keep the transaction bounded.
+     */
+    @PostMapping("/batch/regenerate-pins")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<List<PinRegenerationResponse>> regeneratePinsBatch(
+            @Valid @RequestBody BatchPinRegenerationRequest request) {
+        return ResponseEntity.ok(
+                employeService.regeneratePinsBatch(request.employeIds(), request.motif()));
+    }
+
+    /**
+     * V36: Returns the data needed to render a printable PIN sheet for the
+     * given employees (max 200). Each call writes a PRINT entry to the audit
+     * log so admins can track when each card was last issued.
+     */
+    @GetMapping("/pin-sheet")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<List<PinSheetEntryResponse>> getPinSheet(
+            @RequestParam("employeIds") List<String> employeIds) {
+        return ResponseEntity.ok(employeService.getPinSheetData(employeIds));
     }
 
     // Dead endpoints /role/{role} and /site/{siteId} removed — frontend uses /all with client-side filtering

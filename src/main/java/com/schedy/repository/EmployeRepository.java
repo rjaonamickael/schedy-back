@@ -43,6 +43,17 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
     @Query("SELECT DISTINCT e FROM Employe e JOIN e.roles r WHERE r = :role AND e.organisationId = :organisationId")
     List<Employe> findByRoleAndOrganisationId(@Param("role") String role, @Param("organisationId") String organisationId);
     Optional<Employe> findByPinHashAndOrganisationId(String pinHash, String organisationId);
+
+    /**
+     * V36: returns ALL employees in the org with the given PIN hash. Used by
+     * the per-employee PIN regeneration flow to detect collisions on the same
+     * site. The Optional variant above silently returns the first match, which
+     * is a latent bug when more than one employee shares a hash on the same
+     * site (a kiosk lookup would then resolve to the wrong employee).
+     */
+    @Query("SELECT e FROM Employe e WHERE e.pinHash = :pinHash AND e.organisationId = :organisationId")
+    List<Employe> findAllByPinHashAndOrganisationId(@Param("pinHash") String pinHash, @Param("organisationId") String organisationId);
+
     /** For kiosk PIN lookup — find by pinHash across all orgs, then filter by site */
     List<Employe> findByPinHash(String pinHash);
     long countByOrganisationId(String organisationId);

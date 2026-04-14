@@ -4,7 +4,10 @@ import com.schedy.config.TenantContext;
 import com.schedy.dto.EmployeDto;
 import com.schedy.dto.request.UpdateSystemRoleRequest;
 import com.schedy.dto.response.EmployeImpactResponse;
+import com.schedy.dto.response.PinRegenerationResponse;
+import com.schedy.dto.response.PinSheetEntryResponse;
 import com.schedy.entity.Employe;
+import com.schedy.entity.PinAuditLog;
 import com.schedy.entity.PlatformAnnouncement;
 import com.schedy.entity.StatutDemande;
 import com.schedy.entity.User;
@@ -35,13 +38,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.IsoFields;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -64,6 +73,7 @@ public class EmployeService {
     private final SubscriptionRepository subscriptionRepository;
     private final TotpEncryptionUtil pinEncryptionUtil;
     private final CongeService congeService;
+    private final PinAuditLogger pinAuditLogger;
 
     @Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
@@ -577,6 +587,244 @@ public class EmployeService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Acces refuse: vous ne pouvez consulter que vos propres donnees");
         }
+    }
+
+    // ===== V36: PIN regeneration + printable sheet + audit trail =====
+
+    private static final SecureRandom PIN_RANDOM = new SecureRandom();
+    private static final int PIN_GENERATION_MAX_ATTEMPTS = 20;
+    private static final int PIN_SHEET_MAX_ENTRIES = 200;
+    private static final int PIN_BATCH_MAX_SIZE = 200;
+
+    /**
+     * V36: regenerate a single employee's kiosk PIN on admin demand. Returns
+     * the freshly generated PIN so the caller can immediately display + print
+     * it. The new PIN is guaranteed unique against any other employee sharing
+     * at least one site with this one (closes a long-standing latent bug
+     * where two employees on the same site could collide on a 4-digit PIN).
+     * Old and new SHA-256 hashes are written to {@code pin_audit_log}.
+     */
+    @Transactional
+    public PinRegenerationResponse regenerateIndividualPin(String employeId, String motif) {
+        String orgId = tenantContext.requireOrganisationId();
+        Employe employe = employeRepository.findByIdAndOrganisationId(employeId, orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employe", employeId));
+
+        String oldPinHash = employe.getPinHash();
+        String newPin = generateUniquePinForEmploye(employe, orgId);
+        String newPinHash = CryptoUtil.sha256(newPin);
+
+        applyNewPin(employe, newPin, newPinHash);
+        employeRepository.save(employe);
+
+        String adminUserId = getCurrentAdminUserId();
+        pinAuditLogger.write(PinAuditLog.builder()
+                .employeId(employeId)
+                .adminUserId(adminUserId)
+                .action(PinAuditLog.Action.REGENERATE_INDIVIDUAL)
+                .source(PinAuditLog.Source.ADMIN_UI)
+                .oldPinHash(oldPinHash)
+                .newPinHash(newPinHash)
+                .motif(motif)
+                .organisationId(orgId)
+                .build());
+
+        log.info("Individual PIN regenerated for employe {} (admin={})", employeId, adminUserId);
+        return new PinRegenerationResponse(
+                employe.getId(),
+                newPin,
+                employe.getPinGeneratedAt(),
+                employe.getPinVersion());
+    }
+
+    /**
+     * V36: regenerate PINs for a batch of employees in one atomic transaction.
+     * Capped at {@value #PIN_BATCH_MAX_SIZE} to keep the transaction bounded
+     * and avoid PIN regeneration storms on large organisations.
+     */
+    @Transactional
+    public List<PinRegenerationResponse> regeneratePinsBatch(List<String> employeIds, String motif) {
+        if (employeIds == null || employeIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (employeIds.size() > PIN_BATCH_MAX_SIZE) {
+            throw new BusinessRuleException(
+                    "Maximum " + PIN_BATCH_MAX_SIZE + " employes par lot de regeneration.");
+        }
+        String orgId = tenantContext.requireOrganisationId();
+        String adminUserId = getCurrentAdminUserId();
+
+        List<Employe> employes = employeRepository.findAllById(employeIds).stream()
+                .filter(e -> orgId.equals(e.getOrganisationId()))
+                .toList();
+
+        List<PinRegenerationResponse> results = new ArrayList<>(employes.size());
+        for (Employe employe : employes) {
+            String oldPinHash = employe.getPinHash();
+            String newPin = generateUniquePinForEmploye(employe, orgId);
+            String newPinHash = CryptoUtil.sha256(newPin);
+
+            applyNewPin(employe, newPin, newPinHash);
+
+            pinAuditLogger.write(PinAuditLog.builder()
+                    .employeId(employe.getId())
+                    .adminUserId(adminUserId)
+                    .action(PinAuditLog.Action.REGENERATE_INDIVIDUAL)
+                    .source(PinAuditLog.Source.BATCH_OP)
+                    .oldPinHash(oldPinHash)
+                    .newPinHash(newPinHash)
+                    .motif(motif)
+                    .organisationId(orgId)
+                    .build());
+
+            results.add(new PinRegenerationResponse(
+                    employe.getId(),
+                    newPin,
+                    employe.getPinGeneratedAt(),
+                    employe.getPinVersion()));
+        }
+        employeRepository.saveAll(employes);
+
+        log.info("Batch PIN regeneration: {} employes (admin={})", employes.size(), adminUserId);
+        return results;
+    }
+
+    /**
+     * V36: returns the data needed to render a printable PIN sheet. Each call
+     * also writes a {@link PinAuditLog.Action#PRINT} audit entry per employee
+     * so admins can answer "when was this card last issued ?".
+     */
+    @Transactional
+    public List<PinSheetEntryResponse> getPinSheetData(List<String> employeIds) {
+        if (employeIds == null || employeIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (employeIds.size() > PIN_SHEET_MAX_ENTRIES) {
+            throw new BusinessRuleException(
+                    "Maximum " + PIN_SHEET_MAX_ENTRIES + " employes par feuille d'impression.");
+        }
+        String orgId = tenantContext.requireOrganisationId();
+        String adminUserId = getCurrentAdminUserId();
+
+        List<Employe> employes = employeRepository.findAllById(employeIds).stream()
+                .filter(e -> orgId.equals(e.getOrganisationId()))
+                .toList();
+
+        // Resolve site names in a single batch to avoid N+1
+        Set<String> allSiteIds = new HashSet<>();
+        for (Employe e : employes) {
+            if (e.getSiteIds() != null) allSiteIds.addAll(e.getSiteIds());
+        }
+        Map<String, String> siteNamesById = allSiteIds.isEmpty()
+                ? Collections.emptyMap()
+                : siteRepository.findAllById(allSiteIds).stream()
+                    .collect(Collectors.toMap(s -> s.getId(), s -> s.getNom(), (a, b) -> a));
+
+        List<PinSheetEntryResponse> results = new ArrayList<>(employes.size());
+        for (Employe employe : employes) {
+            String firstSite = (employe.getSiteIds() != null && !employe.getSiteIds().isEmpty())
+                    ? siteNamesById.get(employe.getSiteIds().get(0))
+                    : null;
+            String pinClair = decryptPinClair(employe);
+
+            results.add(new PinSheetEntryResponse(
+                    employe.getId(),
+                    employe.getNom(),
+                    firstSite,
+                    pinClair,
+                    employe.getPinGeneratedAt(),
+                    employe.getPinVersion()));
+
+            pinAuditLogger.write(PinAuditLog.builder()
+                    .employeId(employe.getId())
+                    .adminUserId(adminUserId)
+                    .action(PinAuditLog.Action.PRINT)
+                    .source(PinAuditLog.Source.ADMIN_UI)
+                    .organisationId(orgId)
+                    .build());
+        }
+
+        log.info("PIN sheet generated for {} employes (admin={})", employes.size(), adminUserId);
+        return results;
+    }
+
+    /** Applies a freshly generated PIN to the entity (hashes, encryption, version, timestamp). */
+    private void applyNewPin(Employe employe, String newPin, String newPinHash) {
+        employe.setPin(passwordEncoder.encode(newPin));
+        employe.setPinHash(newPinHash);
+        employe.setPinClair(pinEncryptionUtil.encrypt(newPin));
+        employe.setPinClairEncrypted(true);
+        employe.setPinGeneratedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        employe.setPinVersion((employe.getPinVersion() == null ? 1 : employe.getPinVersion()) + 1);
+    }
+
+    /**
+     * Generates a 4-digit PIN guaranteed unique against any other employee
+     * sharing at least one site with this one. Bounded retry; throws 500 if no
+     * unique PIN found after {@value #PIN_GENERATION_MAX_ATTEMPTS} attempts
+     * (extremely unlikely with 4 digits and < 50 employees per site).
+     */
+    private String generateUniquePinForEmploye(Employe employe, String orgId) {
+        String employeId = employe.getId();
+        List<String> siteIds = employe.getSiteIds();
+        for (int i = 0; i < PIN_GENERATION_MAX_ATTEMPTS; i++) {
+            String candidate = String.format("%04d", PIN_RANDOM.nextInt(10000));
+            String hash = CryptoUtil.sha256(candidate);
+            if (!isPinHashCollidingOnSites(hash, employeId, siteIds, orgId)) {
+                return candidate;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Impossible de generer un PIN unique apres "
+                + PIN_GENERATION_MAX_ATTEMPTS + " tentatives");
+    }
+
+    private boolean isPinHashCollidingOnSites(String hash, String selfId,
+                                              List<String> siteIds, String orgId) {
+        if (siteIds == null || siteIds.isEmpty()) {
+            return false;
+        }
+        List<Employe> sameHash = employeRepository.findAllByPinHashAndOrganisationId(hash, orgId);
+        for (Employe other : sameHash) {
+            if (other.getId().equals(selfId)) continue;
+            if (other.getSiteIds() == null) continue;
+            for (String s : other.getSiteIds()) {
+                if (siteIds.contains(s)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Shared decryption helper used by {@link #getDecryptedPin(String)} and
+     * the printable sheet path. Encapsulates the pre-V10 plaintext fallback so
+     * the legacy branch lives in exactly one place.
+     */
+    private String decryptPinClair(Employe employe) {
+        String stored = employe.getPinClair();
+        if (stored == null || stored.isBlank()) {
+            return "";
+        }
+        if (!employe.isPinClairEncrypted()) {
+            log.warn("Returning plaintext PIN for pre-migration employe {} — "
+                    + "PIN will be re-encrypted on next update.", employe.getId());
+            return stored;
+        }
+        try {
+            return pinEncryptionUtil.decrypt(stored);
+        } catch (Exception e) {
+            log.error("AES-256-GCM decryption failed for employe {}: {}",
+                    employe.getId(), e.getMessage());
+            return "";
+        }
+    }
+
+    private String getCurrentAdminUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) return null;
+        return userRepository.findByEmail(auth.getName())
+                .map(u -> String.valueOf(u.getId()))
+                .orElse(null);
     }
 
 }

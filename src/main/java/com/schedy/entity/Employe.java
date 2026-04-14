@@ -119,6 +119,23 @@ public class Employe {
     @Builder.Default
     private boolean pinClairEncrypted = false; // TRUE = post-V10 encrypted blob; FALSE = pre-migration plaintext
 
+    /**
+     * V36: UTC timestamp of the most recent PIN write (creation or regeneration).
+     * Printed on the kiosk card so admins can match a physical card against the
+     * live PIN. NULL for legacy rows pre-V36; backfilled on next regeneration.
+     */
+    @Column(name = "pin_generated_at")
+    private java.time.OffsetDateTime pinGeneratedAt;
+
+    /**
+     * V36: monotonic counter incremented on every PIN regeneration. Printed on
+     * the kiosk card alongside pinGeneratedAt so admins can quickly tell when a
+     * physical card is stale and needs reprinting.
+     */
+    @Column(name = "pin_version", nullable = false)
+    @Builder.Default
+    private Integer pinVersion = 1;
+
     private String organisationId;
 
     @ElementCollection(fetch = FetchType.EAGER)

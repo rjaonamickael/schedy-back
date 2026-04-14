@@ -48,6 +48,7 @@ class EmployeServiceTest {
     @Mock private OrganisationRepository organisationRepository;
     @Mock private PlatformAnnouncementRepository announcementRepository;
     @Mock private CongeService congeService;
+    @Mock private PinAuditLogger pinAuditLogger;
 
     @InjectMocks private EmployeService employeService;
 

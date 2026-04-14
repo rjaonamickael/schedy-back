@@ -46,6 +46,7 @@ class PointageCodeServiceTest {
     @Mock private TenantContext tenantContext;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private TotpEncryptionUtil pinEncryptionUtil;
+    @Mock private PinAuditLogger pinAuditLogger;
 
     @InjectMocks private PointageCodeService pointageCodeService;
 
@@ -191,7 +192,7 @@ class PointageCodeServiceTest {
         private PointageCodeService buildService(String adminCode, String profile) {
             PointageCodeService service = new PointageCodeService(
                     pointageCodeRepository, employeRepository, tenantContext,
-                    passwordEncoder, pinEncryptionUtil);
+                    passwordEncoder, pinEncryptionUtil, pinAuditLogger);
             ReflectionTestUtils.setField(service, "kioskAdminCode", adminCode);
             ReflectionTestUtils.setField(service, "activeProfile", profile);
             return service;

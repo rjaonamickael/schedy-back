@@ -4,6 +4,7 @@ import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageCodeDto;
 import com.schedy.dto.response.KioskPointageCodeResponse;
 import com.schedy.entity.Employe;
+import com.schedy.entity.PinAuditLog;
 import com.schedy.entity.PointageCode;
 import com.schedy.entity.PointageCode.UniteRotation;
 import com.schedy.exception.BusinessRuleException;
@@ -38,6 +39,7 @@ public class PointageCodeService {
     private final TenantContext tenantContext;
     private final PasswordEncoder passwordEncoder;
     private final com.schedy.util.TotpEncryptionUtil pinEncryptionUtil;
+    private final PinAuditLogger pinAuditLogger;
 
     @Value("${schedy.kiosk.admin-code:}")
     private String kioskAdminCode;
@@ -324,8 +326,22 @@ public class PointageCodeService {
 
     /**
      * Regenerates BCrypt + SHA-256 + plain PINs for all employees assigned to a site.
-     * Called whenever a new pointage code is generated so employee PINs stay in sync
-     * with the new rotation cycle.
+     * Called whenever a new pointage code is generated so employee PINs stay in
+     * sync with the rotation cycle the admin configured.
+     *
+     * <p>V36: every regenerated PIN is recorded in {@code pin_audit_log} with
+     * {@link PinAuditLog.Action#REGENERATE_CASCADE} /
+     * {@link PinAuditLog.Source#AUTO_ROTATION}. The {@code adminUserId} is
+     * left null because cascade rotations are system-triggered side effects of
+     * {@code generateNewCode}; manual triggers via {@code regenerateNow} remain
+     * visible in the controller-level Spring Security access logs.
+     *
+     * <p>Known limitation (tracked separately): this method does NOT enforce
+     * PIN uniqueness within the site. Two employees on the same site could
+     * receive the same 4-digit PIN, in which case the kiosk lookup resolves
+     * to whichever row Postgres returns first. The new admin-triggered
+     * {@code EmployeService#regenerateIndividualPin} flow does enforce
+     * uniqueness; cascade hardening will follow in a dedicated cleanup ticket.
      *
      * @param siteId the site whose employees need fresh PINs
      * @param orgId  the organisation that owns the site
@@ -333,18 +349,37 @@ public class PointageCodeService {
      */
     private int regenerateEmployeePins(String siteId, String orgId) {
         List<Employe> employes = employeRepository.findBySiteIdsContainingAndOrganisationId(siteId, orgId);
+        if (employes.isEmpty()) {
+            return 0;
+        }
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         for (Employe emp : employes) {
+            String oldPinHash = emp.getPinHash();
             String newPin = String.format("%04d", RANDOM.nextInt(10000));
+            String newPinHash = CryptoUtil.sha256(newPin);
+
             emp.setPin(passwordEncoder.encode(newPin));
-            emp.setPinHash(CryptoUtil.sha256(newPin));
+            emp.setPinHash(newPinHash);
             // Fix SEC-02: encrypt PIN with AES-256-GCM instead of storing plaintext
             emp.setPinClair(pinEncryptionUtil.encrypt(newPin));
             emp.setPinClairEncrypted(true);
+            // V36: track when the PIN was last written and bump the version
+            emp.setPinGeneratedAt(now);
+            emp.setPinVersion((emp.getPinVersion() == null ? 1 : emp.getPinVersion()) + 1);
+
+            // V36: audit log — system-triggered cascade, no admin attribution
+            pinAuditLogger.write(PinAuditLog.builder()
+                    .employeId(emp.getId())
+                    .adminUserId(null)
+                    .action(PinAuditLog.Action.REGENERATE_CASCADE)
+                    .source(PinAuditLog.Source.AUTO_ROTATION)
+                    .oldPinHash(oldPinHash)
+                    .newPinHash(newPinHash)
+                    .organisationId(orgId)
+                    .build());
         }
-        if (!employes.isEmpty()) {
-            employeRepository.saveAll(employes);
-            log.info("Regenerated PINs for {} employees on site {}", employes.size(), siteId);
-        }
+        employeRepository.saveAll(employes);
+        log.info("Regenerated PINs for {} employees on site {} (cascade)", employes.size(), siteId);
         return employes.size();
     }
 
