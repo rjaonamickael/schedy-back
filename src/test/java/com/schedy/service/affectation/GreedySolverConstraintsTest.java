@@ -45,7 +45,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 14.0, 18.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(14.0).heureFin(18.0).build()))
@@ -88,7 +88,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build()))
@@ -129,13 +129,13 @@ class GreedySolverConstraintsTest {
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
 
         Employe empA = Employe.builder()
-                .id("e-a").nom("EmpA").role("caissier")
+                .id("e-a").nom("EmpA").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(dispoLundi))
                 .build();
 
         Employe empB = Employe.builder()
-                .id("e-b").nom("EmpB").role("caissier")
+                .id("e-b").nom("EmpB").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_B))
                 .disponibilites(List.of(dispoLundi))
                 .build();
@@ -169,7 +169,7 @@ class GreedySolverConstraintsTest {
                 SITE_B, List.of(0), 8.0, 12.0, 1);
 
         Employe empAB = Employe.builder()
-                .id("e-ab").nom("EmpAB").role("caissier")
+                .id("e-ab").nom("EmpAB").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build()))
@@ -209,7 +209,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(1), 8.0, 12.0, 1);  // mardi, bloc 4h
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(1).heureDebut(8.0).heureFin(12.0).build()))
@@ -286,7 +286,7 @@ class GreedySolverConstraintsTest {
         Exigence exigence = buildExigence("ex1", "Journée complète", "caissier",
                 SITE_A, List.of(0), 8.0, 16.0, 1);
 
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build(),
@@ -319,7 +319,7 @@ class GreedySolverConstraintsTest {
         Exigence exigence = buildExigence("ex1", "Matin court", "caissier",
                 SITE_A, List.of(0), 9.0, 11.0, 1);
 
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(9.0).heureFin(10.0).build(),
@@ -352,7 +352,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 8.0, 16.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
@@ -430,7 +430,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 16.0, 20.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(20.0).build(),
@@ -475,7 +475,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(6), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(6).heureDebut(8.0).heureFin(12.0).build()))
@@ -511,7 +511,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe sansites = Employe.builder()
-                .id("e1").nom("SansSites").role("caissier")
+                .id("e1").nom("SansSites").roles(List.of("caissier"))
                 .siteIds(null)
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build()))
@@ -541,7 +541,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(1), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build(),
@@ -642,7 +642,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(1), 6.0, 10.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(14.0).heureFin(22.0).build(),
@@ -672,7 +672,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(1), 6.0, 10.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(1).heureDebut(6.0).heureFin(10.0).build()))
@@ -702,7 +702,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 6.0, 10.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(6).heureDebut(20.0).heureFin(23.0).build(),
@@ -736,7 +736,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(6), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(6).heureDebut(8.0).heureFin(12.0).build()))
@@ -769,7 +769,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(6), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(6).heureDebut(8.0).heureFin(12.0).build()))
@@ -805,7 +805,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(6), 8.0, 12.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(6).heureDebut(8.0).heureFin(12.0).build()))
@@ -943,7 +943,7 @@ class GreedySolverConstraintsTest {
                 SITE_A, List.of(0), 8.0, 17.0, 1);
 
         Employe alice = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(17.0).build()))

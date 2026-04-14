@@ -46,13 +46,13 @@ class GreedySolverIntegrationTest {
         DisponibilitePlage dispoLundi = DisponibilitePlage.builder()
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
 
-        Employe chef = Employe.builder().id("chef").nom("Chef").role("cuisinier")
+        Employe chef = Employe.builder().id("chef").nom("Chef").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispoLundi)).build();
-        Employe commis = Employe.builder().id("commis").nom("Commis").role("cuisinier")
+        Employe commis = Employe.builder().id("commis").nom("Commis").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispoLundi)).build();
-        Employe paul = Employe.builder().id("paul").nom("Paul").role("serveur")
+        Employe paul = Employe.builder().id("paul").nom("Paul").roles(List.of("serveur"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispoLundi)).build();
-        Employe marie = Employe.builder().id("marie").nom("Marie").role("serveur")
+        Employe marie = Employe.builder().id("marie").nom("Marie").roles(List.of("serveur"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispoLundi)).build();
 
         ContexteAffectation ctx = buildContexte(
@@ -91,15 +91,15 @@ class GreedySolverIntegrationTest {
                 .jour(0).heureDebut(8.0).heureFin(14.0).build();
 
         List<Employe> employes = List.of(
-                Employe.builder().id("c1").nom("Chef1").role("cuisinier")
+                Employe.builder().id("c1").nom("Chef1").roles(List.of("cuisinier"))
                         .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build(),
-                Employe.builder().id("c2").nom("Chef2").role("cuisinier")
+                Employe.builder().id("c2").nom("Chef2").roles(List.of("cuisinier"))
                         .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build(),
-                Employe.builder().id("s1").nom("Serv1").role("serveur")
+                Employe.builder().id("s1").nom("Serv1").roles(List.of("serveur"))
                         .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build(),
-                Employe.builder().id("s2").nom("Serv2").role("serveur")
+                Employe.builder().id("s2").nom("Serv2").roles(List.of("serveur"))
                         .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build(),
-                Employe.builder().id("s3").nom("Serv3").role("serveur")
+                Employe.builder().id("s3").nom("Serv3").roles(List.of("serveur"))
                         .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build()
         );
 
@@ -142,10 +142,10 @@ class GreedySolverIntegrationTest {
             dispoSemaine.add(DisponibilitePlage.builder().jour(j).heureDebut(8.0).heureFin(16.0).build());
         }
 
-        Employe chefSenior = Employe.builder().id("cs").nom("ChefSenior").role("cuisinier")
+        Employe chefSenior = Employe.builder().id("cs").nom("ChefSenior").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2010, 1, 1)).build();
-        Employe chefJunior = Employe.builder().id("cj").nom("ChefJunior").role("cuisinier")
+        Employe chefJunior = Employe.builder().id("cj").nom("ChefJunior").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2022, 6, 1)).build();
 
@@ -153,7 +153,7 @@ class GreedySolverIntegrationTest {
         List<Employe> serveurs = new ArrayList<>();
         int[] annees = {2012, 2015, 2018, 2020, 2023, 2024};
         for (int i = 0; i < 6; i++) {
-            serveurs.add(Employe.builder().id("s" + i).nom("Serveur" + i).role("serveur")
+            serveurs.add(Employe.builder().id("s" + i).nom("Serveur" + i).roles(List.of("serveur"))
                     .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                     .dateEmbauche(LocalDate.of(annees[i], 1, 1)).build());
         }
@@ -208,9 +208,9 @@ class GreedySolverIntegrationTest {
 
         DisponibilitePlage dispo = DisponibilitePlage.builder()
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build();
-        Employe bob = Employe.builder().id("e2").nom("Bob").role("caissier")
+        Employe bob = Employe.builder().id("e2").nom("Bob").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(List.of(dispo)).build();
 
         ContexteAffectation ctx = buildContexte(
@@ -242,13 +242,13 @@ class GreedySolverIntegrationTest {
                 SITE_A, List.of(0), 14.0, 18.0, 1);
 
         // alice : disponible matin ET après-midi
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(18.0).build()))
                 .build();
         // bob : disponible UNIQUEMENT le matin
-        Employe bob = Employe.builder().id("e2").nom("Bob").role("caissier")
+        Employe bob = Employe.builder().id("e2").nom("Bob").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build()))
@@ -287,9 +287,9 @@ class GreedySolverIntegrationTest {
         DisponibilitePlage dispo = DisponibilitePlage.builder()
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
 
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B)).disponibilites(List.of(dispo)).build();
-        Employe bob = Employe.builder().id("e2").nom("Bob").role("caissier")
+        Employe bob = Employe.builder().id("e2").nom("Bob").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_B)).disponibilites(List.of(dispo)).build();
 
         Map<String, Employe> parId = Map.of("e1", alice, "e2", bob);
@@ -324,7 +324,7 @@ class GreedySolverIntegrationTest {
         Exigence exB = buildExigence("ex-b", "Après-midi B", "caissier",
                 SITE_B, List.of(0), 12.0, 16.0, 1);
 
-        Employe alice = Employe.builder().id("e1").nom("Alice").role("caissier")
+        Employe alice = Employe.builder().id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
@@ -374,27 +374,27 @@ class GreedySolverIntegrationTest {
         }
 
         // 4 cuisiniers (2 site-A, 1 site-B, 1 les deux)
-        Employe c1 = Employe.builder().id("c1").nom("Chef1").role("cuisinier")
+        Employe c1 = Employe.builder().id("c1").nom("Chef1").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2012, 1, 1)).build();
-        Employe c2 = Employe.builder().id("c2").nom("Chef2").role("cuisinier")
+        Employe c2 = Employe.builder().id("c2").nom("Chef2").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2020, 6, 1)).build();
-        Employe c3 = Employe.builder().id("c3").nom("Chef3").role("cuisinier")
+        Employe c3 = Employe.builder().id("c3").nom("Chef3").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_B)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2018, 3, 1)).build();
-        Employe c4 = Employe.builder().id("c4").nom("ChefFlex").role("cuisinier")
+        Employe c4 = Employe.builder().id("c4").nom("ChefFlex").roles(List.of("cuisinier"))
                 .siteIds(List.of(SITE_A, SITE_B)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2015, 1, 1)).build();
 
         // 3 serveurs site-A
-        Employe s1 = Employe.builder().id("s1").nom("Serv1").role("serveur")
+        Employe s1 = Employe.builder().id("s1").nom("Serv1").roles(List.of("serveur"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2014, 1, 1)).build();
-        Employe s2 = Employe.builder().id("s2").nom("Serv2").role("serveur")
+        Employe s2 = Employe.builder().id("s2").nom("Serv2").roles(List.of("serveur"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2021, 9, 1)).build();
-        Employe s3 = Employe.builder().id("s3").nom("Serv3").role("serveur")
+        Employe s3 = Employe.builder().id("s3").nom("Serv3").roles(List.of("serveur"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoFull))
                 .dateEmbauche(LocalDate.of(2023, 1, 1)).build();
 
@@ -676,7 +676,7 @@ class GreedySolverIntegrationTest {
         List<Employe> employes = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
             employes.add(Employe.builder()
-                    .id("e" + i).nom("Emp" + i).role("caissier")
+                    .id("e" + i).nom("Emp" + i).roles(List.of("caissier"))
                     .siteIds(List.of(SITE_A))
                     .disponibilites(new ArrayList<>(dispoSemaine))
                     .dateEmbauche(LocalDate.of(2015 + i, 1, 1))

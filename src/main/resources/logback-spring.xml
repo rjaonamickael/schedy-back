@@ -28,9 +28,25 @@
 
     <!-- ── Prod profile: console WARN + rolling file ──────────────────────── -->
     <springProfile name="prod">
+        <!--
+          SEC-07 / V33-bis SEC : structured JSON logs for SIEM/log-aggregator ingestion.
+          Each line is a single JSON object containing @timestamp, level, logger, thread,
+          message + every MDC key (orgId/userId/requestId once added). Kibana/Datadog/Loki
+          can index these directly without regex parsing. Includes audit log entries
+          (audit.creneau.update from PlanningService.java:177) as structured events.
+
+          Tradeoff vs v32 plain text :
+          + grep/jq friendly post-incident
+          + audit log entries become structured
+          + future MDC enrichment works with no encoder change
+          - human readability degrades at the console (use jq locally if needed)
+        -->
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-                <pattern>${LOG_PATTERN}</pattern>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>orgId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <customFields>{"app":"schedy","env":"prod"}</customFields>
             </encoder>
             <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
                 <level>WARN</level>
@@ -39,8 +55,11 @@
 
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>logs/schedy.log</file>
-            <encoder>
-                <pattern>${LOG_PATTERN}</pattern>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdcKeyName>orgId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>requestId</includeMdcKeyName>
+                <customFields>{"app":"schedy","env":"prod"}</customFields>
             </encoder>
             <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
                 <!-- Daily rollover, keep 30 days -->

@@ -144,7 +144,8 @@ public class EmployeService {
         }
         Employe employe = Employe.builder()
                 .nom(dto.nom())
-                .role(dto.role())
+                // Sprint 16 / Feature 2 : roles is an ordered list (index 0 = principal).
+                .roles(dto.roles() != null ? new java.util.ArrayList<>(dto.roles()) : new java.util.ArrayList<>())
                 .telephone(dto.telephone())
                 .email(dto.email())
                 .dateNaissance(dto.dateNaissance())
@@ -204,7 +205,11 @@ public class EmployeService {
             }
         }
         employe.setNom(dto.nom());
-        employe.setRole(dto.role());
+        // Sprint 16 : clear-and-addAll keeps the same List instance managed by Hibernate.
+        if (dto.roles() != null) {
+            employe.getRoles().clear();
+            employe.getRoles().addAll(dto.roles());
+        }
         employe.setTelephone(dto.telephone());
         employe.setEmail(dto.email());
         // Fix CODE-01: guard nullable date fields — do not overwrite existing

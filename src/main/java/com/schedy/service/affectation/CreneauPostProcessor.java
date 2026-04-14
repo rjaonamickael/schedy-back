@@ -91,9 +91,15 @@ public final class CreneauPostProcessor {
                     .filter(c -> c.getSiteId().equals(exigence.getSiteId()))
                     .filter(c -> slot >= c.getHeureDebut() - EPSILON
                               && slot < c.getHeureFin() - EPSILON)
-                    .map(c -> ctx.employeParId().get(c.getEmployeId()))
-                    .filter(emp -> emp != null
-                            && java.util.Objects.equals(emp.getRole(), exigence.getRole()))
+                    // Sprint 16 : prefer the creneau's captured role (V33), else
+                    // fall back to any role the employee holds (multi-role).
+                    .filter(c -> {
+                        if (c.getRole() != null) {
+                            return c.getRole().equals(exigence.getRole());
+                        }
+                        var emp = ctx.employeParId().get(c.getEmployeId());
+                        return emp != null && emp.hasRole(exigence.getRole());
+                    })
                     .count();
 
             int totalRequired = SchedulingConstraints.getTotalRequiredForSlot(

@@ -32,7 +32,7 @@ public final class SolverTestFixtures {
                                         String siteId,
                                         int jour, double heureDebut, double heureFin) {
         return Employe.builder()
-                .id(id).nom(nom).role(role)
+                .id(id).nom(nom).roles(List.of(role))
                 .siteIds(List.of(siteId))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder()
@@ -45,7 +45,7 @@ public final class SolverTestFixtures {
                                                   String siteId,
                                                   List<DisponibilitePlage> dispos) {
         return Employe.builder()
-                .id(id).nom(nom).role(role)
+                .id(id).nom(nom).roles(List.of(role))
                 .siteIds(List.of(siteId))
                 .disponibilites(dispos)
                 .build();
@@ -56,7 +56,7 @@ public final class SolverTestFixtures {
                                                  List<String> siteIds,
                                                  int jour, double heureDebut, double heureFin) {
         return Employe.builder()
-                .id(id).nom(nom).role(role)
+                .id(id).nom(nom).roles(List.of(role))
                 .siteIds(siteIds)
                 .disponibilites(List.of(
                         DisponibilitePlage.builder()
@@ -258,18 +258,18 @@ public final class SolverTestFixtures {
         }
     }
 
-    /** Invariant 6: every creneau's employee matches the exigence's role. */
+    /** Invariant 6: every creneau's employee holds the exigence's role (multi-role aware, Sprint 16). */
     public static void assertRoleMatchRespected(SolverResult result,
                                                   ContexteAffectation ctx) {
         for (var c : result.nouveauxCreneaux()) {
             var emp = ctx.employeParId().get(c.getEmployeId());
             boolean roleMatch = ctx.exigences().stream().anyMatch(ex ->
                     ex.getSiteId().equals(c.getSiteId())
-                            && java.util.Objects.equals(ex.getRole(), emp.getRole())
+                            && emp.hasRole(ex.getRole())
                             && ex.getJours().contains(c.getJour()));
             org.assertj.core.api.Assertions.assertThat(roleMatch)
-                    .as("Creneau %s (role=%s) ne correspond a aucune exigence sur site %s jour %d",
-                            c.getEmployeId(), emp.getRole(), c.getSiteId(), c.getJour())
+                    .as("Creneau %s (roles=%s) ne correspond a aucune exigence sur site %s jour %d",
+                            c.getEmployeId(), emp.getRoles(), c.getSiteId(), c.getJour())
                     .isTrue();
         }
     }

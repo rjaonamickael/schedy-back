@@ -142,7 +142,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("encodes PIN with bcrypt and stores SHA-256 pinHash")
         void create_encodesPin_and_computesPinHash() {
-            EmployeDto dto = new EmployeDto(null, "Alice", "employe", null, null,
+            EmployeDto dto = new EmployeDto(null, "Alice", List.of("employe"), null, null,
                     null, null, RAW_PIN, null, List.of(), List.of());
             when(passwordEncoder.encode(RAW_PIN)).thenReturn(ENCODED_PIN);
             ArgumentCaptor<Employe> captor = ArgumentCaptor.forClass(Employe.class);
@@ -161,7 +161,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("stores null pin and null pinHash when dto.pin() is null")
         void create_nullPin_storesBothNull() {
-            EmployeDto dto = new EmployeDto(null, "Bob", "employe", null, null,
+            EmployeDto dto = new EmployeDto(null, "Bob", List.of("employe"), null, null,
                     null, null, null, null, List.of(), List.of());
             ArgumentCaptor<Employe> captor = ArgumentCaptor.forClass(Employe.class);
             when(employeRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -177,7 +177,7 @@ class EmployeServiceTest {
         @Test
         @DisplayName("sets organisationId from TenantContext")
         void create_savesWithOrg() {
-            EmployeDto dto = new EmployeDto(null, "Alice", "employe", "0600000000",
+            EmployeDto dto = new EmployeDto(null, "Alice", List.of("employe"), "0600000000",
                     "alice@example.com", null, null, "1234", null, List.of(), List.of("site-1"));
             when(passwordEncoder.encode(any())).thenReturn(ENCODED_PIN);
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -207,7 +207,7 @@ class EmployeServiceTest {
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
-            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", "employe",
+            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
                     null, null, null, null, newPin, null, List.of(), List.of());
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(passwordEncoder.encode(newPin)).thenReturn(newEncoded);
@@ -228,7 +228,7 @@ class EmployeServiceTest {
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
-            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", "employe",
+            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
                     null, null, null, null, null, null, List.of(), List.of());
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -249,7 +249,7 @@ class EmployeServiceTest {
                     .organisationId(ORG_ID)
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
-            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", "employe",
+            EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
                     null, null, null, null, "   ", null, List.of(), List.of());
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -430,7 +430,7 @@ class EmployeServiceTest {
         @DisplayName("returns correct systemRole when User exists")
         void withLinkedUser_populatesSystemRole() {
             Employe emp = Employe.builder()
-                    .id(EMPLOYE_ID).nom("Alice").role("employe")
+                    .id(EMPLOYE_ID).nom("Alice").roles(List.of("employe"))
                     .organisationId(ORG_ID)
                     .disponibilites(new java.util.ArrayList<>())
                     .siteIds(new java.util.ArrayList<>())
@@ -452,7 +452,7 @@ class EmployeServiceTest {
         @DisplayName("returns hasUserAccount=false when no User linked")
         void noLinkedUser_hasUserAccountFalse() {
             Employe emp = Employe.builder()
-                    .id(EMPLOYE_ID).nom("Bob").role("employe")
+                    .id(EMPLOYE_ID).nom("Bob").roles(List.of("employe"))
                     .organisationId(ORG_ID)
                     .disponibilites(new java.util.ArrayList<>())
                     .siteIds(new java.util.ArrayList<>())

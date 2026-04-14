@@ -33,7 +33,69 @@ public class Employe {
     @Column(nullable = false)
     private String nom;
 
-    private String role;
+    /**
+     * Sprint 16 / Feature 2 : multi-role with explicit hierarchy.
+     *
+     * <p>{@code roles[0]} is the <b>role principal</b> (primary) used for :
+     * <ul>
+     *   <li>display in lists, planning grids and avatars</li>
+     *   <li>full scoring weight in {@code ReplacementService}</li>
+     *   <li>default role when assigning a creneau that doesn't specify one</li>
+     * </ul>
+     *
+     * <p>{@code roles[1..n]} are <b>roles secondaires</b> with decaying score
+     * weight (see {@code ReplacementService.scoreRoleMatchByPosition}). The
+     * hierarchy is explicit : a "plongeur" listed as secondary scores less
+     * than one listed as primary, even if both employees are eligible.
+     *
+     * <p>EAGER + @BatchSize follows the project rule on @ElementCollection
+     * (see CLAUDE.md : never LAZY on collections, serialisation happens
+     * after the session closes).
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "employe_roles", joinColumns = @JoinColumn(name = "employe_id"))
+    @OrderColumn(name = "role_ordre")
+    @Column(name = "role")
+    @BatchSize(size = 50)
+    @Builder.Default
+    private List<String> roles = new ArrayList<>();
+
+    /**
+     * Sprint 16 : returns the primary (index 0) role, or {@code null} if the
+     * employee has no role at all. Used for display in lists, planning grids,
+     * and any legacy call site that expects a single role string.
+     */
+    @Transient
+    @JsonIgnore
+    public String getPrimaryRole() {
+        return roles == null || roles.isEmpty() ? null : roles.get(0);
+    }
+
+    /**
+     * Sprint 16 : returns the 0-based position of the given role in the
+     * hierarchy, or {@code -1} if the employee does not hold that role at all.
+     *
+     * <p>Used by {@code ReplacementService} to weight the role-match score :
+     * index 0 (primary) gets full weight, index 1 (secondary) gets a decay
+     * penalty, index 2+ decays further. The hierarchy is explicit so a
+     * "cuisinier" listed as primary scores higher than one listed as secondary.</p>
+     */
+    @Transient
+    @JsonIgnore
+    public int getRolePosition(String role) {
+        if (role == null || roles == null) return -1;
+        return roles.indexOf(role);
+    }
+
+    /**
+     * Sprint 16 : convenience check for "does this employee hold the given role
+     * at all, regardless of position in the hierarchy ?".
+     */
+    @Transient
+    @JsonIgnore
+    public boolean hasRole(String role) {
+        return role != null && roles != null && roles.contains(role);
+    }
 
     private String telephone;
 

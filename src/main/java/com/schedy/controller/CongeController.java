@@ -5,6 +5,7 @@ import com.schedy.dto.response.*;
 import com.schedy.service.CongeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +25,14 @@ public class CongeController {
 
     private final CongeService congeService;
 
+    /**
+     * BE-03 / V33-bis BE : configurable upper bound for /all unbounded endpoints.
+     * Default 5000 preserves v32 behaviour. Operators can lower it via the env var
+     * SCHEDY_API_MAX_FIND_ALL_SIZE without rebuilding (e.g. = 1000 for tighter limits).
+     */
+    @Value("${schedy.api.max-find-all-size:5000}")
+    private int maxFindAllSize;
+
     // ---- Types de congé ----
 
     @GetMapping("/types")
@@ -33,7 +42,7 @@ public class CongeController {
 
     @GetMapping("/types/all")
     public ResponseEntity<List<TypeCongeResponse>> findAllTypes() {
-        var page = congeService.findAllTypes(PageRequest.of(0, 5000)).map(TypeCongeResponse::from);
+        var page = congeService.findAllTypes(PageRequest.of(0, maxFindAllSize)).map(TypeCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
@@ -72,7 +81,7 @@ public class CongeController {
 
     @GetMapping("/banques/all")
     public ResponseEntity<List<BanqueCongeResponse>> findAllBanques() {
-        var page = congeService.findAllBanques(PageRequest.of(0, 5000)).map(BanqueCongeResponse::from);
+        var page = congeService.findAllBanques(PageRequest.of(0, maxFindAllSize)).map(BanqueCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());
@@ -116,7 +125,7 @@ public class CongeController {
 
     @GetMapping("/demandes/all")
     public ResponseEntity<List<DemandeCongeResponse>> findAllDemandes() {
-        var page = congeService.findAllDemandes(PageRequest.of(0, 5000)).map(DemandeCongeResponse::from);
+        var page = congeService.findAllDemandes(PageRequest.of(0, maxFindAllSize)).map(DemandeCongeResponse::from);
         return ResponseEntity.ok()
                 .header("X-Total-Count", String.valueOf(page.getTotalElements()))
                 .body(page.getContent());

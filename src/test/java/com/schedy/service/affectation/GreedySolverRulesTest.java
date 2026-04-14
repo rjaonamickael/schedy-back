@@ -51,7 +51,7 @@ class GreedySolverRulesTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe senior = Employe.builder()
-                .id("e-senior").nom("Senior").role("caissier")
+                .id("e-senior").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2015, 1, 1))
                 .disponibilites(List.of(
@@ -59,7 +59,7 @@ class GreedySolverRulesTest {
                 .build();
 
         Employe junior = Employe.builder()
-                .id("e-junior").nom("Junior").role("caissier")
+                .id("e-junior").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2023, 6, 1))
                 .disponibilites(List.of(
@@ -88,7 +88,7 @@ class GreedySolverRulesTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe avecDate = Employe.builder()
-                .id("e-avec").nom("AvecDate").role("caissier")
+                .id("e-avec").nom("AvecDate").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2020, 3, 15))
                 .disponibilites(List.of(
@@ -96,7 +96,7 @@ class GreedySolverRulesTest {
                 .build();
 
         Employe sansDate = Employe.builder()
-                .id("e-sans").nom("SansDate").role("caissier")
+                .id("e-sans").nom("SansDate").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(null)
                 .disponibilites(List.of(
@@ -128,21 +128,21 @@ class GreedySolverRulesTest {
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
 
         Employe senior = Employe.builder()
-                .id("e-senior").nom("Senior").role("caissier")
+                .id("e-senior").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2010, 1, 1))
                 .disponibilites(List.of(dispoLundi))
                 .build();
 
         Employe junior1 = Employe.builder()
-                .id("e-junior1").nom("Junior1").role("caissier")
+                .id("e-junior1").nom("Junior1").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2020, 5, 1))
                 .disponibilites(List.of(dispoLundi))
                 .build();
 
         Employe junior2 = Employe.builder()
-                .id("e-junior2").nom("Junior2").role("caissier")
+                .id("e-junior2").nom("Junior2").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2022, 9, 1))
                 .disponibilites(List.of(dispoLundi))
@@ -174,7 +174,7 @@ class GreedySolverRulesTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe ancien = Employe.builder()
-                .id("e-ancien").nom("Ancien").role("caissier")
+                .id("e-ancien").nom("Ancien").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateNaissance(LocalDate.of(1975, 5, 20))
                 .disponibilites(List.of(
@@ -182,7 +182,7 @@ class GreedySolverRulesTest {
                 .build();
 
         Employe jeune = Employe.builder()
-                .id("e-jeune").nom("Jeune").role("caissier")
+                .id("e-jeune").nom("Jeune").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateNaissance(LocalDate.of(1995, 11, 3))
                 .disponibilites(List.of(
@@ -215,7 +215,7 @@ class GreedySolverRulesTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe senior = Employe.builder()
-                .id("e-senior").nom("Senior").role("caissier")
+                .id("e-senior").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2010, 1, 1))
                 .disponibilites(List.of(
@@ -223,7 +223,7 @@ class GreedySolverRulesTest {
                 .build();
 
         Employe junior = Employe.builder()
-                .id("e-junior").nom("Junior").role("caissier")
+                .id("e-junior").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2022, 9, 1))
                 .disponibilites(List.of(
@@ -252,7 +252,7 @@ class GreedySolverRulesTest {
                 SITE_A, List.of(0), 8.0, 12.0, 1);
 
         Employe senior = Employe.builder()
-                .id("e-senior").nom("Senior").role("caissier")
+                .id("e-senior").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2012, 3, 1))
                 .disponibilites(List.of(
@@ -260,7 +260,7 @@ class GreedySolverRulesTest {
                 .build();
 
         Employe junior = Employe.builder()
-                .id("e-junior").nom("Junior").role("caissier")
+                .id("e-junior").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2021, 8, 15))
                 .disponibilites(List.of(
@@ -302,13 +302,13 @@ class GreedySolverRulesTest {
             dispoSemaine.add(DisponibilitePlage.builder().jour(j).heureDebut(8.0).heureFin(12.0).build());
         }
 
-        Employe senior = Employe.builder().id("e1").nom("Senior").role("caissier")
+        Employe senior = Employe.builder().id("e1").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2010, 1, 1)).build();
-        Employe mid = Employe.builder().id("e2").nom("Mid").role("caissier")
+        Employe mid = Employe.builder().id("e2").nom("Mid").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2018, 1, 1)).build();
-        Employe junior = Employe.builder().id("e3").nom("Junior").role("caissier")
+        Employe junior = Employe.builder().id("e3").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2023, 1, 1)).build();
 
@@ -346,10 +346,10 @@ class GreedySolverRulesTest {
             dispoSemaine.add(DisponibilitePlage.builder().jour(j).heureDebut(8.0).heureFin(12.0).build());
         }
 
-        Employe senior = Employe.builder().id("e1").nom("Senior").role("caissier")
+        Employe senior = Employe.builder().id("e1").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2010, 1, 1)).build();
-        Employe mid = Employe.builder().id("e2").nom("Mid").role("caissier")
+        Employe mid = Employe.builder().id("e2").nom("Mid").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispoSemaine))
                 .dateEmbauche(LocalDate.of(2018, 1, 1)).build();
 
@@ -378,7 +378,7 @@ class GreedySolverRulesTest {
     // =========================================================================
 
     private Employe buildSenior() {
-        return Employe.builder().id("e-senior").nom("Senior").role("caissier")
+        return Employe.builder().id("e-senior").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2010, 1, 1))
                 .dateNaissance(LocalDate.of(1975, 5, 15))
@@ -388,7 +388,7 @@ class GreedySolverRulesTest {
     }
 
     private Employe buildJunior() {
-        return Employe.builder().id("e-junior").nom("Junior").role("caissier")
+        return Employe.builder().id("e-junior").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2023, 6, 1))
                 .dateNaissance(LocalDate.of(1995, 11, 3))
@@ -398,7 +398,7 @@ class GreedySolverRulesTest {
     }
 
     private Employe buildVeteran() {
-        return Employe.builder().id("e-veteran").nom("Veteran").role("caissier")
+        return Employe.builder().id("e-veteran").nom("Veteran").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A))
                 .dateEmbauche(LocalDate.of(2008, 3, 1))
                 .dateNaissance(LocalDate.of(1970, 2, 20))
@@ -678,13 +678,13 @@ class GreedySolverRulesTest {
             dispo3j.add(DisponibilitePlage.builder().jour(j).heureDebut(8.0).heureFin(12.0).build());
         }
 
-        Employe veteran = Employe.builder().id("e-vet").nom("Veteran").role("caissier")
+        Employe veteran = Employe.builder().id("e-vet").nom("Veteran").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2008, 1, 1)).build();
-        Employe senior = Employe.builder().id("e-sen").nom("Senior").role("caissier")
+        Employe senior = Employe.builder().id("e-sen").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2012, 1, 1)).build();
-        Employe junior = Employe.builder().id("e-jun").nom("Junior").role("caissier")
+        Employe junior = Employe.builder().id("e-jun").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2023, 1, 1)).build();
 
@@ -737,13 +737,13 @@ class GreedySolverRulesTest {
             dispo3j.add(DisponibilitePlage.builder().jour(j).heureDebut(8.0).heureFin(12.0).build());
         }
 
-        Employe veteran = Employe.builder().id("e-vet").nom("Veteran").role("caissier")
+        Employe veteran = Employe.builder().id("e-vet").nom("Veteran").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2008, 1, 1)).build();
-        Employe senior = Employe.builder().id("e-sen").nom("Senior").role("caissier")
+        Employe senior = Employe.builder().id("e-sen").nom("Senior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2012, 1, 1)).build();
-        Employe junior = Employe.builder().id("e-jun").nom("Junior").role("caissier")
+        Employe junior = Employe.builder().id("e-jun").nom("Junior").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A)).disponibilites(new ArrayList<>(dispo3j))
                 .dateEmbauche(LocalDate.of(2023, 1, 1)).build();
 
@@ -820,5 +820,68 @@ class GreedySolverRulesTest {
         assertThat(ex2CouverteParEmp1)
                 .as("emp1 doit couvrir ex2 (seul candidat dispo l'après-midi)")
                 .isTrue();
+    }
+
+    // =========================================================================
+    // Sprint 16 / Feature 2 : multi-role employees can fill exigences for any of their roles
+    // =========================================================================
+
+    @Test
+    @DisplayName("Sprint 16 : multi-role employee can fill an exigence matching their secondary role")
+    void sprint16_multiRole_matchesSecondary() {
+        // An exigence requires a "plongeur"
+        Exigence exPlongeur = buildExigence("ex1", "Plonge lundi 8h-12h", "plongeur",
+                SITE_A, List.of(0), 8.0, 12.0, 1);
+
+        // The only available employee has "cuisinier" as primary + "plongeur" as secondary
+        Employe multiRole = Employe.builder()
+                .id("e1").nom("Multi")
+                .roles(List.of("cuisinier", "plongeur"))
+                .siteIds(List.of(SITE_A))
+                .disponibilites(List.of(
+                        DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(12.0).build()))
+                .build();
+
+        ContexteAffectation ctx = buildContexte(
+                List.of(exPlongeur),
+                List.of(multiRole),
+                List.of(), List.of(), List.of(),
+                1.0, 1.0, List.of("anciennete"), 48.0);
+        GreedySolver solver = new GreedySolver();
+
+        SolverResult result = solver.resoudre(ctx);
+
+        assertThat(result.nouveauxCreneaux())
+                .as("Multi-role employee must be eligible for their secondary role")
+                .hasSize(1);
+        assertThat(result.nouveauxCreneaux().get(0).getEmployeId()).isEqualTo("e1");
+        // Sprint 16 : the creneau captures the role that was filled.
+        assertThat(result.nouveauxCreneaux().get(0).getRole())
+                .as("The captured role must be the exigence role (plongeur), not the employee's primary (cuisinier)")
+                .isEqualTo("plongeur");
+    }
+
+    @Test
+    @DisplayName("Sprint 16 : single-role employee is excluded from exigences they don't hold")
+    void sprint16_singleRole_excludedFromOtherRoles() {
+        // Exigence requires a "cuisinier"
+        Exigence exCuisinier = buildExigence("ex1", "Cuisine lundi 8h-12h", "cuisinier",
+                SITE_A, List.of(0), 8.0, 12.0, 1);
+
+        // Employee only has "plongeur" — cannot fill the cuisinier slot
+        Employe plongeurOnly = buildEmploye("e1", "Plongeur", "plongeur", SITE_A, 0, 8.0, 12.0);
+
+        ContexteAffectation ctx = buildContexte(
+                List.of(exCuisinier),
+                List.of(plongeurOnly),
+                List.of(), List.of(), List.of(),
+                1.0, 1.0, List.of("anciennete"), 48.0);
+        GreedySolver solver = new GreedySolver();
+
+        SolverResult result = solver.resoudre(ctx);
+
+        assertThat(result.nouveauxCreneaux())
+                .as("No eligible candidate -> zero creneau created")
+                .isEmpty();
     }
 }

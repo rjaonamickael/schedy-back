@@ -147,12 +147,12 @@ class GreedySolverBasicTest {
         DisponibilitePlage dispoLundi = DisponibilitePlage.builder()
                 .jour(0).heureDebut(8.0).heureFin(12.0).build();
         Employe emp1 = Employe.builder()
-                .id("e1").nom("Alice").role("caissier")
+                .id("e1").nom("Alice").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(dispoLundi))
                 .build();
         Employe emp2 = Employe.builder()
-                .id("e2").nom("Bob").role("caissier")
+                .id("e2").nom("Bob").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(dispoLundi))
                 .build();

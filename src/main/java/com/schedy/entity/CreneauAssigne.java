@@ -45,6 +45,19 @@ public class CreneauAssigne {
     @Column(nullable = false)
     private String siteId;
 
+    /**
+     * Sprint 16 / Feature 2 : role filled by the employee on this specific creneau.
+     *
+     * <p>For multi-role employees (e.g. "cuisinier" primary + "plongeur" secondary),
+     * this column records which role is being filled on a given day. Nullable :
+     * legacy creneaux from before V33 have no role context and stay at null.</p>
+     *
+     * <p>Populated from the exigence that triggered an auto-affectation, or from
+     * an explicit choice in the manual assignation modal.</p>
+     */
+    @Column(name = "role")
+    private String role;
+
     @Column(name = "organisation_id")
     private String organisationId;
 }

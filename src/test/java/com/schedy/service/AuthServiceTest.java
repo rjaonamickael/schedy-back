@@ -3,7 +3,6 @@ package com.schedy.service;
 import com.schedy.config.JwtUtil;
 import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.RegisterRequest;
-import com.schedy.dto.response.AuthResponse;
 import com.schedy.entity.Organisation;
 import com.schedy.entity.User;
 import com.schedy.repository.EmployeRepository;
@@ -61,12 +60,15 @@ class AuthServiceTest {
         when(organisationRepository.findById(ORG_ID))
                 .thenReturn(Optional.of(Organisation.builder().id(ORG_ID).nom("Test").pays("MG").build()));
 
-        AuthResponse response = authService.login(new AuthRequest(EMAIL, PASSWORD));
+        // SEC-20 / Sprint 11 : login now returns AuthResult carrying the raw refresh JWT
+        // that the controller will pack into an HttpOnly cookie — the body has no refreshToken field.
+        AuthResult result = authService.login(new AuthRequest(EMAIL, PASSWORD));
 
-        assertThat(response.accessToken()).isEqualTo("access");
-        assertThat(response.email()).isEqualTo(EMAIL);
-        assertThat(response.role()).isEqualTo("MANAGER");
-        assertThat(response.pays()).isEqualTo("MG");
+        assertThat(result.response().accessToken()).isEqualTo("access");
+        assertThat(result.response().email()).isEqualTo(EMAIL);
+        assertThat(result.response().role()).isEqualTo("MANAGER");
+        assertThat(result.response().pays()).isEqualTo("MG");
+        assertThat(result.rawRefreshToken()).isEqualTo("refresh");
     }
 
     @Test
@@ -116,9 +118,11 @@ class AuthServiceTest {
         // register() creates a user with null organisationId (self-registration ignores org),
         // so resolveOrgPays(null) is called — no stub needed for organisationRepository here.
 
-        AuthResponse response = authService.register(req);
+        // SEC-20 / Sprint 11 : register now returns AuthResult — same wrapper rationale as login.
+        AuthResult result = authService.register(req);
 
-        assertThat(response.email()).isEqualTo(EMAIL);
-        assertThat(response.role()).isEqualTo("EMPLOYEE");
+        assertThat(result.response().email()).isEqualTo(EMAIL);
+        assertThat(result.response().role()).isEqualTo("EMPLOYEE");
+        assertThat(result.rawRefreshToken()).isEqualTo("refresh");
     }
 }

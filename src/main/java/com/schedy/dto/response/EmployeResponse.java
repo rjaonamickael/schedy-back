@@ -11,7 +11,9 @@ import java.util.List;
 public record EmployeResponse(
         String id,
         String nom,
-        String role,
+        // Sprint 16 / Feature 2 : hierarchical multi-role.
+        // roles[0] = role principal, roles[1..] = roles secondaires.
+        List<String> roles,
         String telephone,
         String email,
         LocalDate dateNaissance,
@@ -31,7 +33,7 @@ public record EmployeResponse(
         return new EmployeResponse(
                 e.getId(),
                 e.getNom(),
-                e.getRole(),
+                e.getRoles(),
                 e.getTelephone(),
                 e.getEmail(),
                 e.getDateNaissance(),

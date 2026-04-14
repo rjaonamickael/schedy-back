@@ -5,7 +5,6 @@ import com.schedy.dto.request.AuthRequest;
 import com.schedy.dto.request.ChangePasswordRequest;
 import com.schedy.dto.request.ForgotPasswordRequest;
 import com.schedy.dto.request.InviteAdminRequest;
-import com.schedy.dto.request.RefreshRequest;
 import com.schedy.dto.request.RegisterRequest;
 import com.schedy.dto.request.ResetPasswordRequest;
 import com.schedy.dto.request.SetPasswordRequest;
@@ -78,7 +77,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public AuthResult register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un utilisateur avec cet email existe d\u00e9j\u00e0 / A user with this email already exists");
@@ -117,11 +116,12 @@ public class AuthService {
         userRepository.save(user);
         log.info("New user registered: {} with role {}", request.email(), role);
 
-        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResult.withRefresh(response, refreshToken);
     }
 
     @Transactional
-    public AuthResponse login(AuthRequest request) {
+    public AuthResult login(AuthRequest request) {
         String email = request.email().toLowerCase().trim();
 
         // B-H16: Check per-account lockout before attempting authentication
@@ -154,12 +154,13 @@ public class AuthService {
         failedLogins.invalidate(email);
 
         // If 2FA is enabled, issue a short-lived pending token and send email code.
+        // SEC-20: no refresh cookie is issued at this step — the browser only gets the pending token body.
         if (user.isTotpEnabled()) {
             String pendingToken = jwtUtil.generate2faPendingToken(user.getEmail());
             // Generate and send email 2FA code
             sendEmail2faCode(user);
             log.info("2FA challenge issued for: {}", user.getEmail());
-            return AuthResponse.pending2fa(pendingToken, email2faCodeExpirySeconds);
+            return AuthResult.bodyOnly(AuthResponse.pending2fa(pendingToken, email2faCodeExpirySeconds));
         }
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
@@ -168,7 +169,8 @@ public class AuthService {
         userRepository.save(user);
         log.info("User logged in: {}", user.getEmail());
 
-        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResult.withRefresh(response, refreshToken);
     }
 
     /**
@@ -176,11 +178,14 @@ public class AuthService {
      * Called by {@link com.schedy.controller.AuthController} once TotpService confirms
      * the TOTP code or recovery code is valid.
      *
+     * <p>SEC-20 / Sprint 11 : returns an {@link AuthResult} so the controller can pack
+     * the raw refresh token into an HttpOnly cookie. The JSON body no longer carries it.</p>
+     *
      * @param email the user's email (extracted from the validated pendingToken)
-     * @return a normal {@link AuthResponse} with access + refresh tokens
+     * @return an {@link AuthResult} containing the access-token body + the raw refresh JWT
      */
     @Transactional
-    public AuthResponse completeLogin(String email) {
+    public AuthResult completeLogin(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable"));
 
@@ -190,8 +195,9 @@ public class AuthService {
         userRepository.save(user);
         log.info("2FA login completed for: {}", user.getEmail());
 
-        return AuthResponse.authenticated(accessToken, refreshToken, user.getEmail(), user.getRole().name(),
+        AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(),
                 user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResult.withRefresh(response, refreshToken);
     }
 
     private void recordFailedAttempt(String email) {
@@ -210,20 +216,28 @@ public class AuthService {
         });
     }
 
+    /**
+     * SEC-20 / Sprint 11 : takes the raw refresh JWT directly (read from the
+     * {@code refreshToken} HttpOnly cookie by the controller) instead of a body DTO.
+     * Throws 401 on missing/invalid/mismatched tokens — consistent with the rest
+     * of the auth contract so the frontend interceptor can drop the session.
+     */
     @Transactional
-    public AuthResponse refresh(RefreshRequest request) {
-        String token = request.refreshToken();
+    public AuthResult refresh(String token) {
+        if (token == null || token.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expiree : refresh token manquant");
+        }
 
         if (!jwtUtil.isTokenValid(token) || !jwtUtil.isRefreshToken(token)) {
-            throw new IllegalArgumentException("Refresh token invalide");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token invalide ou expire");
         }
 
         String email = jwtUtil.extractEmail(token);
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable"));
 
         if (!hashToken(token).equals(user.getRefreshToken())) {
-            throw new IllegalArgumentException("Refresh token ne correspond pas");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token ne correspond pas");
         }
 
         String newAccessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
@@ -232,7 +246,8 @@ public class AuthService {
         userRepository.save(user);
         log.debug("Token refreshed for: {}", email);
 
-        return AuthResponse.authenticated(newAccessToken, newRefreshToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        AuthResponse response = AuthResponse.authenticated(newAccessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
+        return AuthResult.withRefresh(response, newRefreshToken);
     }
 
     @Transactional

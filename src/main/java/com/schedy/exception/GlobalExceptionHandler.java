@@ -1,5 +1,7 @@
 package com.schedy.exception;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
@@ -54,6 +57,59 @@ public class GlobalExceptionHandler {
             errors.put(field, message);
         });
 
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Validation échouée");
+        body.put("details", errors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * V33-bis BE : Jakarta Bean Validation violations on {@code @PathVariable},
+     * {@code @RequestParam} or method-level {@code @Validated} constraints surface
+     * as {@link ConstraintViolationException}. Prior to this handler they bubbled
+     * up to {@link #handleGeneral(Exception)} and returned a misleading 500. They
+     * now map to 400 with a details map keyed by the offending property path so
+     * frontends can surface the exact field.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, String> errors = new HashMap<>();
+        for (ConstraintViolation<?> v : ex.getConstraintViolations()) {
+            String path = v.getPropertyPath() != null ? v.getPropertyPath().toString() : "param";
+            // Collapse "method.arg0" to "arg0" for readability
+            int lastDot = path.lastIndexOf('.');
+            String key = lastDot >= 0 ? path.substring(lastDot + 1) : path;
+            errors.put(key, v.getMessage());
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Validation échouée");
+        body.put("details", errors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * V33-bis BE : Spring 6.1+ raises {@link HandlerMethodValidationException} for
+     * constraint violations on controller method parameters when the controller is
+     * registered via the new validation infrastructure. Map to 400 just like
+     * {@link #handleConstraintViolation(ConstraintViolationException)}.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getParameterValidationResults().forEach(result -> {
+            String key = result.getMethodParameter().getParameterName();
+            if (key == null) {
+                key = "arg" + result.getMethodParameter().getParameterIndex();
+            }
+            String msg = result.getResolvableErrors().isEmpty()
+                    ? "invalid"
+                    : result.getResolvableErrors().get(0).getDefaultMessage();
+            errors.put(key, msg);
+        });
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
         body.put("status", HttpStatus.BAD_REQUEST.value());

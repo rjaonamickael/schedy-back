@@ -14,7 +14,13 @@ import java.util.List;
 import java.util.Optional;
 @Repository
 public interface EmployeRepository extends JpaRepository<Employe, String> {
-    List<Employe> findByRole(String role);
+    /**
+     * Sprint 16 / Feature 2 : role is now a @ElementCollection (List).
+     * Returns employees who hold the given role at ANY position in their hierarchy.
+     */
+    @Query("SELECT DISTINCT e FROM Employe e JOIN e.roles r WHERE r = :role")
+    List<Employe> findByRole(@Param("role") String role);
+
     List<Employe> findByOrganisationId(String organisationId);
     // Multi-site queries
     @Query("SELECT e FROM Employe e JOIN e.siteIds s WHERE s = :siteId")
@@ -30,7 +36,12 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
 
     @Query("SELECT e FROM Employe e JOIN e.siteIds s WHERE s = :siteId AND e.organisationId = :organisationId")
     Page<Employe> findBySiteIdsContainingAndOrganisationId(@Param("siteId") String siteId, @Param("organisationId") String organisationId, Pageable pageable);
-    List<Employe> findByRoleAndOrganisationId(String role, String organisationId);
+    /**
+     * Sprint 16 / Feature 2 : tenant-scoped multi-role query. Returns employees
+     * holding the given role at any position in their hierarchy, for the given org.
+     */
+    @Query("SELECT DISTINCT e FROM Employe e JOIN e.roles r WHERE r = :role AND e.organisationId = :organisationId")
+    List<Employe> findByRoleAndOrganisationId(@Param("role") String role, @Param("organisationId") String organisationId);
     Optional<Employe> findByPinHashAndOrganisationId(String pinHash, String organisationId);
     /** For kiosk PIN lookup — find by pinHash across all orgs, then filter by site */
     List<Employe> findByPinHash(String pinHash);

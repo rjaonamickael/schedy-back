@@ -53,12 +53,25 @@ public class ReplacementService {
         // HIGH-02: scope to the creneau's site instead of loading all org employees.
         List<Employe> tousEmployes = employeRepo.findBySiteIdsContainingAndOrganisationId(creneau.getSiteId(), orgId);
 
-        // Récupérer le rôle de l'employé absent pour scorer les remplaçants par correspondance de rôle
-        String absentRole = tousEmployes.stream()
-                .filter(e -> e.getId().equals(creneau.getEmployeId()))
-                .map(Employe::getRole)
-                .findFirst()
-                .orElse(null);
+        // Sprint 16 : the "absent role" is the role being filled on THIS specific
+        // creneau, not the absent employee's primary role. A multi-role employee
+        // might be filling their secondary role on a given day, and the replacement
+        // must match THAT role, not their primary. Falls back to the absent's
+        // primary role when the creneau has no captured role (legacy creneaux).
+        //
+        // Declared final so it can be captured by the stream lambdas below.
+        final String absentRole;
+        String roleCapture = creneau.getRole();
+        if (roleCapture != null && !roleCapture.isBlank()) {
+            absentRole = roleCapture;
+        } else {
+            absentRole = tousEmployes.stream()
+                    .filter(e -> e.getId().equals(creneau.getEmployeId()))
+                    .map(Employe::getPrimaryRole)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
 
         // Exclure le créneau de l'absent de la liste des créneaux actifs :
         // sans cette exclusion, si un candidat avait déjà été réassigné sur ce créneau
@@ -143,7 +156,8 @@ public class ReplacementService {
         return new RemplacantDto(
                 emp.getId(),
                 emp.getNom(),
-                emp.getRole(),
+                // Sprint 16 : expose the primary role for display (first role in the hierarchy).
+                emp.getPrimaryRole(),
                 emp.getTelephone(),
                 score,
                 heuresSemaine,
@@ -160,12 +174,31 @@ public class ReplacementService {
         // Disponibilité (30 pts) — déjà filtré, donc 30 pts
         score += POIDS_DISPONIBILITE;
 
-        // Rôle (25 pts max) — comparaison avec le rôle de l'employé absent
-        // 25 pts si correspondance exacte, 12 pts si le candidat a un rôle (sans correspondance)
-        if (absentRole != null && !absentRole.isBlank() && absentRole.equals(emp.getRole())) {
-            score += POIDS_MEME_ROLE;  // 25 pts for exact role match
-        } else if (emp.getRole() != null && !emp.getRole().isBlank()) {
-            score += POIDS_MEME_ROLE / 2;  // 12 pts partial credit
+        // Sprint 16 / Feature 2 : role match with hierarchy decay.
+        //
+        //   * primary  (index 0)  -> POIDS_MEME_ROLE (25 pts)
+        //   * secondary (index 1) -> 72 % (18 pts)
+        //   * tertiary  (index 2) -> 48 % (12 pts)
+        //   * 4+ / any other      -> 32 % (8 pts)
+        //   * employee doesn't have the role at all -> 0 pts
+        //
+        // Falls back to "12 pts partial credit if the employee has at least one
+        // role" to preserve the previous behaviour when the absent role is blank
+        // (legacy creneaux without a captured role).
+        if (absentRole != null && !absentRole.isBlank()) {
+            int position = emp.getRolePosition(absentRole);
+            if (position == 0) {
+                score += POIDS_MEME_ROLE;                   // 25 primary
+            } else if (position == 1) {
+                score += (int) Math.round(POIDS_MEME_ROLE * 0.72);   // 18 secondary
+            } else if (position == 2) {
+                score += (int) Math.round(POIDS_MEME_ROLE * 0.48);   // 12 tertiary
+            } else if (position >= 3) {
+                score += (int) Math.round(POIDS_MEME_ROLE * 0.32);   // 8 deep hierarchy
+            }
+            // position == -1 : the employee does not hold that role, 0 pts.
+        } else if (emp.getRoles() != null && !emp.getRoles().isEmpty()) {
+            score += POIDS_MEME_ROLE / 2;  // 12 pts fallback when absent role is unknown
         }
 
         // Équité heures (20 pts) — moins d'heures = plus de points

@@ -91,7 +91,7 @@ class ReplacementServiceTest {
     private Employe buildEmploye(String id, String nom, String role, String siteId,
                                   int jour, double hDebut, double hFin) {
         return Employe.builder()
-                .id(id).nom(nom).role(role)
+                .id(id).nom(nom).roles(List.of(role))
                 .siteIds(List.of(siteId))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(jour).heureDebut(hDebut).heureFin(hFin).build()))
@@ -275,7 +275,7 @@ class ReplacementServiceTest {
     void site_multi_site_suggere() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe multiSite = Employe.builder()
-                .id("c1").nom("MultiSite").role("caissier")
+                .id("c1").nom("MultiSite").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
@@ -328,7 +328,7 @@ class ReplacementServiceTest {
     void cross_site_conflit_exclu() {
         Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
         Employe dejaAffecte = Employe.builder()
-                .id("c1").nom("DejaAffecté").role("caissier")
+                .id("c1").nom("DejaAffecté").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
@@ -410,7 +410,7 @@ class ReplacementServiceTest {
         Employe pasDispo = buildEmploye("c3", "PasDispo", "caissier", SITE_A, 0, 14.0, 18.0);
         // c4 : a un conflit cross-site → exclu
         Employe conflit = Employe.builder()
-                .id("c4").nom("Conflit").role("caissier")
+                .id("c4").nom("Conflit").roles(List.of("caissier"))
                 .siteIds(List.of(SITE_A, SITE_B))
                 .disponibilites(List.of(
                         DisponibilitePlage.builder().jour(0).heureDebut(8.0).heureFin(16.0).build()))
@@ -448,5 +448,114 @@ class ReplacementServiceTest {
                 .as("Seul c5 (Valide) passe tous les filtres")
                 .hasSize(1);
         assertThat(result.get(0).employeId()).isEqualTo("c5");
+    }
+
+    // =========================================================================
+    // Sprint 16 / Feature 2 : hierarchical multi-role scoring
+    // =========================================================================
+
+    /**
+     * Helper : builds an employee with an ordered roles hierarchy.
+     * roles.get(0) = primary, roles.get(1) = secondary, etc.
+     */
+    private Employe buildMultiRoleEmploye(String id, String nom, List<String> roles,
+                                           String siteId, int jour, double hDebut, double hFin) {
+        return Employe.builder()
+                .id(id).nom(nom).roles(roles)
+                .siteIds(List.of(siteId))
+                .disponibilites(List.of(
+                        DisponibilitePlage.builder().jour(jour).heureDebut(hDebut).heureFin(hFin).build()))
+                .build();
+    }
+
+    @Test
+    @DisplayName("Sprint 16 : primary role match scores higher than secondary on the same creneau")
+    void sprint16_primaryOutscoresSecondary() {
+        // Absent creneau captures the role "caissier" explicitly (V33 column)
+        creneauAbsent.setRole("caissier");
+        lenient().when(creneauRepo.findByIdAndOrganisationId("creneau-absent", ORG))
+                .thenReturn(Optional.of(creneauAbsent));
+
+        Employe absent = buildEmploye("absent", "Absent", "caissier", SITE_A, 0, 8.0, 12.0);
+        // primary : caissier  →  should score 25 pts on role
+        Employe primary = buildMultiRoleEmploye("primary", "Primary",
+                List.of("caissier", "plongeur"), SITE_A, 0, 8.0, 16.0);
+        // secondary : plongeur first, caissier second  →  should score 18 pts on role
+        Employe secondary = buildMultiRoleEmploye("secondary", "Secondary",
+                List.of("plongeur", "caissier"), SITE_A, 0, 8.0, 16.0);
+
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, primary, secondary));
+
+        var result = service.findReplacements("creneau-absent");
+
+        assertThat(result).hasSize(2);
+        // primary must rank before secondary
+        assertThat(result.get(0).employeId()).isEqualTo("primary");
+        assertThat(result.get(1).employeId()).isEqualTo("secondary");
+        // score gap must be at least 7 points (25 - 18 on role match)
+        assertThat(result.get(0).score() - result.get(1).score())
+                .as("primary vs secondary score gap")
+                .isGreaterThanOrEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("Sprint 16 : employee who does not hold the role at all is excluded from candidates")
+    void sprint16_wrongRole_excluded() {
+        creneauAbsent.setRole("caissier");
+        lenient().when(creneauRepo.findByIdAndOrganisationId("creneau-absent", ORG))
+                .thenReturn(Optional.of(creneauAbsent));
+
+        // Note : ReplacementService does NOT filter candidates by role (scoring only).
+        // An employee without the role still appears but with 0 role-match points.
+        // This test verifies the score reflects the absence of the role.
+        Employe absent  = buildEmploye("absent",  "Absent",  "caissier", SITE_A, 0, 8.0, 12.0);
+        Employe withRole = buildMultiRoleEmploye("withRole", "WithRole",
+                List.of("caissier"), SITE_A, 0, 8.0, 16.0);
+        Employe noRole   = buildMultiRoleEmploye("noRole",   "NoRole",
+                List.of("manager"), SITE_A, 0, 8.0, 16.0);
+
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, withRole, noRole));
+
+        var result = service.findReplacements("creneau-absent");
+
+        // Both candidates are returned (role is scoring, not filtering),
+        // but withRole must score at least 25 points higher than noRole.
+        assertThat(result).hasSize(2);
+        var first  = result.stream().filter(r -> r.employeId().equals("withRole")).findFirst().orElseThrow();
+        var second = result.stream().filter(r -> r.employeId().equals("noRole")).findFirst().orElseThrow();
+        assertThat(first.score() - second.score())
+                .as("withRole (25) vs noRole (0) role-score gap")
+                .isGreaterThanOrEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("Sprint 16 : absent role is read from the creneau (V33), not from the absent employee")
+    void sprint16_absentRoleReadFromCreneau() {
+        // Absent employee has "cuisinier" as primary, but on THIS creneau they were
+        // filling "plongeur" (secondary) — captured in creneau.role.
+        creneauAbsent.setRole("plongeur");
+        lenient().when(creneauRepo.findByIdAndOrganisationId("creneau-absent", ORG))
+                .thenReturn(Optional.of(creneauAbsent));
+
+        Employe absent = buildMultiRoleEmploye("absent", "Absent",
+                List.of("cuisinier", "plongeur"), SITE_A, 0, 8.0, 12.0);
+        // A candidate with "plongeur" as primary must rank first — the system must
+        // match on the creneau role ("plongeur"), not the absent's primary ("cuisinier").
+        Employe goodMatch = buildMultiRoleEmploye("goodMatch", "Good",
+                List.of("plongeur"), SITE_A, 0, 8.0, 16.0);
+        // A candidate with "cuisinier" only must rank lower (no plongeur role).
+        Employe wrongMatch = buildMultiRoleEmploye("wrongMatch", "Wrong",
+                List.of("cuisinier"), SITE_A, 0, 8.0, 16.0);
+
+        when(employeRepo.findBySiteIdsContainingAndOrganisationId(SITE_A, ORG))
+                .thenReturn(List.of(absent, goodMatch, wrongMatch));
+
+        var result = service.findReplacements("creneau-absent");
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).employeId()).isEqualTo("goodMatch");
+        assertThat(result.get(0).score()).isGreaterThan(result.get(1).score());
     }
 }

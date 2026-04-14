@@ -45,10 +45,11 @@ public class AutoAffectationService {
         }
 
         // ── Load all data ──────────────────────────────────────
-        List<Exigence> exigences = loadExigences(orgId, siteId);
+        LocalDate lundi = getLundiDeSemaine(semaine);
+        // Sprint 16 / Feature 1 : exigences filtered by period + priority deduped.
+        List<Exigence> exigences = loadExigences(orgId, siteId, lundi);
         List<Employe> employes = loadEmployes(orgId, siteId);
         List<CreneauAssigne> creneauxExistants = loadCreneaux(orgId, semaine);
-        LocalDate lundi = getLundiDeSemaine(semaine);
         List<DemandeConge> congesApprouves = loadCongesApprouves(orgId, lundi);
         List<JourFerie> joursFeries = jourFerieRepository.findByOrganisationId(orgId);
         Parametres parametres = loadParametres(orgId, siteId);
@@ -108,11 +109,37 @@ public class AutoAffectationService {
 
     // ── Data loading ───────────────────────────────────────────
 
-    private List<Exigence> loadExigences(String orgId, String siteId) {
-        if (siteId != null) {
-            return exigenceRepository.findBySiteIdAndOrganisationId(siteId, orgId);
+    /**
+     * Sprint 16 / Feature 1 : exigences are now period-scoped.
+     *
+     * <p>We apply the date filter and priority deduplication after loading from the
+     * repository. The solver sees exactly one exigence per {@code (role, siteId, jours, heureDebut, heureFin)}
+     * tuple for the week being scheduled.</p>
+     */
+    private List<Exigence> loadExigences(String orgId, String siteId, LocalDate lundi) {
+        List<Exigence> raw = (siteId != null)
+                ? exigenceRepository.findBySiteIdAndOrganisationId(siteId, orgId)
+                : exigenceRepository.findByOrganisationId(orgId);
+
+        // Filter by period (null dateDebut = always active, else range check) and
+        // deduplicate by tuple keeping the highest priorite.
+        java.util.Map<String, Exigence> byTuple = new java.util.HashMap<>();
+        for (Exigence e : raw) {
+            if (e.getDateDebut() != null) {
+                if (lundi.isBefore(e.getDateDebut())) continue;
+                if (e.getDateFin() != null && lundi.isAfter(e.getDateFin())) continue;
+            }
+            String tuple = (e.getRole() == null ? "" : e.getRole())
+                    + "|" + (e.getSiteId() == null ? "" : e.getSiteId())
+                    + "|" + (e.getJours() == null ? "" : e.getJours().toString())
+                    + "|" + e.getHeureDebut()
+                    + "|" + e.getHeureFin();
+            Exigence existing = byTuple.get(tuple);
+            if (existing == null || e.getPriorite() > existing.getPriorite()) {
+                byTuple.put(tuple, e);
+            }
         }
-        return exigenceRepository.findByOrganisationId(orgId);
+        return new ArrayList<>(byTuple.values());
     }
 
     private List<Employe> loadEmployes(String orgId, String siteId) {

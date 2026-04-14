@@ -65,6 +65,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, BucketEntry> twoFaBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> refreshBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> publicTestimonialBuckets = new ConcurrentHashMap<>();
+    /**
+     * V33-03 SEC : per-IP bucket for write operations on /api/v1/creneaux/* (POST/PUT/DELETE).
+     * Drag-and-drop ships in v33 and a malicious or buggy manager could spam thousands of
+     * PUT /creneaux/{id} requests in a few seconds. 60 writes/min per IP is well above any
+     * legitimate UX (a manager rarely moves more than 5-10 shifts per minute).
+     */
+    private final Map<String, BucketEntry> creneauWriteBuckets = new ConcurrentHashMap<>();
 
     private final Set<String> trustedProxies;
 
@@ -109,6 +116,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             entry = resolveBucket(waitlistBuckets, ip, 3, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/public/testimonials")) {
             entry = resolveBucket(publicTestimonialBuckets, ip, 60, Duration.ofMinutes(1));
+        } else if (path.startsWith("/api/v1/creneaux") && !"GET".equals(request.getMethod())) {
+            // V33-03 SEC : limit drag-drop / batch / delete spam on creneau writes (60/min per IP)
+            entry = resolveBucket(creneauWriteBuckets, ip, 60, Duration.ofMinutes(1));
         }
 
         if (entry != null && !entry.bucket().tryConsume(1)) {
@@ -172,6 +182,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         evicted += evictStaleEntries(twoFaBuckets, threshold);
         evicted += evictStaleEntries(refreshBuckets, threshold);
         evicted += evictStaleEntries(publicTestimonialBuckets, threshold);
+        evicted += evictStaleEntries(creneauWriteBuckets, threshold);
         if (evicted > 0) {
             log.debug("Rate limit buckets evicted ({} stale entries removed)", evicted);
         }

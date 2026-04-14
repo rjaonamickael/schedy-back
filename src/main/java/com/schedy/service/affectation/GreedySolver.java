@@ -177,6 +177,9 @@ public class GreedySolver implements AffectationSolver {
                             .heureFin(plage[1])
                             .semaine(ctx.semaine())
                             .siteId(exigence.getSiteId())
+                            // Sprint 16 / Feature 2 : capture the role being filled
+                            // so the UI can display it and Plan B can match it later.
+                            .role(exigence.getRole())
                             .organisationId(ctx.organisationId())
                             .build();
 
@@ -225,7 +228,7 @@ public class GreedySolver implements AffectationSolver {
     private Comparator<ExigenceJour> comparateurMrvInitial(List<Employe> employes) {
         return Comparator.comparingDouble(paire -> {
             long candidats = employes.stream()
-                    .filter(emp -> Objects.equals(emp.getRole(), paire.exigence().getRole()))
+                    .filter(emp -> emp.hasRole(paire.exigence().getRole()))
                     .count();
             int requis = paire.exigence().getNombreRequis();
             return requis == 0 ? Double.MAX_VALUE : (double) candidats / requis;
@@ -239,7 +242,7 @@ public class GreedySolver implements AffectationSolver {
         return Comparator.comparingDouble(paire -> {
             LocalDate dateJour = dpj.get(paire.jour());
             long candidats = employes.stream()
-                    .filter(emp -> Objects.equals(emp.getRole(), paire.exigence().getRole()))
+                    .filter(emp -> emp.hasRole(paire.exigence().getRole()))
                     .filter(emp -> emp.getSiteIds() != null
                             && emp.getSiteIds().contains(paire.exigence().getSiteId()))
                     .filter(emp -> aDisponibiliteJour(emp, paire.jour()))
@@ -288,9 +291,15 @@ public class GreedySolver implements AffectationSolver {
                     .filter(c -> c.getSiteId().equals(exigence.getSiteId()))
                     .filter(c -> slot >= c.getHeureDebut() - EPSILON
                               && slot < c.getHeureFin() - EPSILON)
-                    .map(c -> ctx.employeParId().get(c.getEmployeId()))
-                    .filter(emp -> emp != null
-                            && Objects.equals(emp.getRole(), exigence.getRole()))
+                    // Sprint 16 : match the creneau's captured role first (if populated),
+                    // else fall back to any role the employee holds.
+                    .filter(c -> {
+                        if (c.getRole() != null) {
+                            return c.getRole().equals(exigence.getRole());
+                        }
+                        Employe emp = ctx.employeParId().get(c.getEmployeId());
+                        return emp != null && emp.hasRole(exigence.getRole());
+                    })
                     .count();
 
             int totalRequired = getTotalRequiredForSlot(
@@ -311,9 +320,17 @@ public class GreedySolver implements AffectationSolver {
         Set<String> candidatsAssignes = new HashSet<>();
         for (CreneauAssigne c : creneauxJour) {
             if (!c.getSiteId().equals(exigence.getSiteId())) continue;
-            Employe emp = ctx.employeParId().get(c.getEmployeId());
-            if (emp != null && Objects.equals(emp.getRole(), exigence.getRole())) {
-                candidatsAssignes.add(emp.getId());
+            // Sprint 16 : prefer the creneau's captured role (authoritative if set),
+            // else fall back to whether the employee holds the exigence role.
+            boolean matches;
+            if (c.getRole() != null) {
+                matches = c.getRole().equals(exigence.getRole());
+            } else {
+                Employe emp = ctx.employeParId().get(c.getEmployeId());
+                matches = emp != null && emp.hasRole(exigence.getRole());
+            }
+            if (matches) {
+                candidatsAssignes.add(c.getEmployeId());
             }
         }
 
@@ -341,7 +358,7 @@ public class GreedySolver implements AffectationSolver {
                                             Set<String> dejaPresents,
                                             ContexteAffectation ctx) {
         return ctx.employes().stream()
-                .filter(emp -> Objects.equals(emp.getRole(), exigence.getRole()))
+                .filter(emp -> emp.hasRole(exigence.getRole()))
                 .filter(emp -> emp.getSiteIds() != null
                         && emp.getSiteIds().contains(exigence.getSiteId()))
                 .filter(emp -> !dejaPresents.contains(emp.getId()))
@@ -405,9 +422,18 @@ public class GreedySolver implements AffectationSolver {
         for (int iter = 0; iter < MAX_SWAP_ITERATIONS; iter++) {
             boolean improved = false;
 
+            // Sprint 16 / Feature 2 : a multi-role employee is placed in EVERY group
+            // they belong to, so the 2-swap optimizer can consider them as a
+            // candidate for any of their roles' equity rebalancing.
             Map<String, List<Employe>> parRole = new TreeMap<>();
             for (Employe emp : ctx.employes()) {
-                parRole.computeIfAbsent(emp.getRole() != null ? emp.getRole() : "", k -> new ArrayList<>()).add(emp);
+                if (emp.getRoles() == null || emp.getRoles().isEmpty()) {
+                    parRole.computeIfAbsent("", k -> new ArrayList<>()).add(emp);
+                } else {
+                    for (String role : emp.getRoles()) {
+                        parRole.computeIfAbsent(role, k -> new ArrayList<>()).add(emp);
+                    }
+                }
             }
 
             for (List<Employe> groupe : parRole.values()) {

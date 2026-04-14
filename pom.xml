@@ -139,6 +139,15 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- SEC-07 / V33-bis SEC : structured JSON logs for SIEM-friendly observability.
+             Active uniquement via le profile prod (logback-spring.xml) — dev garde le
+             format console pretty-printed pour la productivite. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

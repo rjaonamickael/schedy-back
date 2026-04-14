@@ -9,6 +9,7 @@ import com.schedy.entity.User;
 import com.schedy.service.EmployeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +29,14 @@ public class EmployeController {
 
     private final EmployeService employeService;
 
+    /**
+     * BE-03 / V33-bis BE : configurable upper bound for /all unbounded endpoints.
+     * Default 5000 preserves v32 behaviour. Operators can lower it via the env var
+     * SCHEDY_API_MAX_FIND_ALL_SIZE without rebuilding (e.g. = 1000 for tighter limits).
+     */
+    @Value("${schedy.api.max-find-all-size:5000}")
+    private int maxFindAllSize;
+
     @GetMapping
     public ResponseEntity<Page<EmployeResponse>> findAll(Pageable pageable,
             @RequestParam(value = "siteId", required = false) String siteId) {
@@ -46,10 +55,10 @@ public class EmployeController {
         Map<String, User> userMap = employeService.findAllUserMapByOrg();
         Page<EmployeResponse> page;
         if (siteId != null) {
-            page = employeService.findBySiteId(siteId, PageRequest.of(0, 5000))
+            page = employeService.findBySiteId(siteId, PageRequest.of(0, maxFindAllSize))
                     .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         } else {
-            page = employeService.findAll(PageRequest.of(0, 5000))
+            page = employeService.findAll(PageRequest.of(0, maxFindAllSize))
                     .map(e -> EmployeResponse.from(e, userMap.get(e.getId())));
         }
         return ResponseEntity.ok()
