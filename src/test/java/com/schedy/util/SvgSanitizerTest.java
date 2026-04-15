@@ -123,37 +123,53 @@ class SvgSanitizerTest {
         @Test
         @DisplayName("strips <foreignObject> (renders HTML → XSS pivot)")
         void stripsForeignObject() {
+            // A backup <rect> keeps the SVG passing validateHasContent once
+            // the <foreignObject> is removed — the test is about stripping,
+            // not about whether an SVG made entirely of foreignObject is valid.
             String input = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">"
                     + "<foreignObject><body><script>alert(1)</script></body></foreignObject>"
+                    + "<rect width=\"10\" height=\"10\"/>"
                     + "</svg>";
             String out = SvgSanitizer.sanitize(bytes(input));
             assertThat(out).doesNotContainIgnoringCase("foreignObject");
             assertThat(out).doesNotContainIgnoringCase("script");
             assertThat(out).doesNotContain("alert");
+            assertThat(out).contains("rect");
         }
 
         @Test
         @DisplayName("strips javascript: href on <a>")
         void stripsJavascriptHref() {
-            String input = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">"
+            // viewBox is required by validateDimensions. A backup <circle>
+            // lives outside the <a> so validateHasContent still has a shape
+            // after the sanitizer drops the whole <a> subtree.
+            String input = "<svg xmlns=\"http://www.w3.org/2000/svg\""
+                    + " xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 100 100\">"
                     + "<a xlink:href=\"javascript:alert(1)\"><rect width=\"10\" height=\"10\"/></a>"
+                    + "<circle cx=\"50\" cy=\"50\" r=\"10\"/>"
                     + "</svg>";
             String out = SvgSanitizer.sanitize(bytes(input));
             // <a> isn't whitelisted — the whole element is dropped along with
             // its attribute, which also kills the javascript: payload.
             assertThat(out).doesNotContain("javascript");
             assertThat(out).doesNotContain("alert");
+            assertThat(out).contains("circle");
         }
 
         @Test
         @DisplayName("strips <use xlink:href> pointing at external document")
         void stripsUseTag() {
-            String input = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">"
+            // Added viewBox + backup <rect> so the SVG survives validateDimensions
+            // and validateHasContent once <use> is stripped.
+            String input = "<svg xmlns=\"http://www.w3.org/2000/svg\""
+                    + " xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 100 100\">"
                     + "<use xlink:href=\"https://evil.example.com/pwn.svg#x\"/>"
+                    + "<rect width=\"10\" height=\"10\"/>"
                     + "</svg>";
             String out = SvgSanitizer.sanitize(bytes(input));
-            assertThat(out).doesNotContain("use");
+            assertThat(out).doesNotContain("<use");
             assertThat(out).doesNotContain("evil.example.com");
+            assertThat(out).contains("rect");
         }
 
         @Test
@@ -161,10 +177,12 @@ class SvgSanitizerTest {
         void stripsImageHref() {
             String input = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">"
                     + "<image href=\"https://tracker.example.com/pixel.gif\"/>"
+                    + "<rect width=\"10\" height=\"10\"/>"
                     + "</svg>";
             String out = SvgSanitizer.sanitize(bytes(input));
-            assertThat(out).doesNotContain("image");
+            assertThat(out).doesNotContain("<image");
             assertThat(out).doesNotContain("tracker.example.com");
+            assertThat(out).contains("rect");
         }
 
         @Test
@@ -172,11 +190,13 @@ class SvgSanitizerTest {
         void stripsStyleTag() {
             String input = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">"
                     + "<style>@import url('https://evil.example.com/styles.css');</style>"
+                    + "<rect width=\"10\" height=\"10\"/>"
                     + "</svg>";
             String out = SvgSanitizer.sanitize(bytes(input));
-            assertThat(out).doesNotContain("style");
+            assertThat(out).doesNotContain("<style");
             assertThat(out).doesNotContain("@import");
             assertThat(out).doesNotContain("evil.example.com");
+            assertThat(out).contains("rect");
         }
 
         @Test

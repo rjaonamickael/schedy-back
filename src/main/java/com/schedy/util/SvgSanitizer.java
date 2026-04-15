@@ -19,7 +19,9 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Strict SVG sanitizer for user-uploaded logos.
@@ -88,6 +90,18 @@ public final class SvgSanitizer {
             "text", "tspan", "clipPath", "mask", "pattern",
             "metadata"
     );
+
+    /**
+     * Lowercased mirror of {@link #ALLOWED_ELEMENTS} so that {@link #cleanNode}
+     * can compare tag names case-insensitively without the camelCase members
+     * (linearGradient, radialGradient, clipPath) getting stripped by mistake.
+     * The check used to lowercase the tag and compare against the camelCase
+     * set, which meant {@code linearGradient} never matched — a silent bug
+     * that stripped every gradient out of uploaded logos.
+     */
+    private static final Set<String> ALLOWED_ELEMENTS_LOWER = ALLOWED_ELEMENTS.stream()
+            .map(s -> s.toLowerCase(Locale.ROOT))
+            .collect(Collectors.toUnmodifiableSet());
 
     /**
      * Attributes allowed on any element. Names are case-sensitive.
@@ -306,8 +320,7 @@ public final class SvgSanitizer {
             if (child.getNodeType() == Node.ELEMENT_NODE) {
                 String tag = child.getLocalName() != null
                         ? child.getLocalName() : child.getNodeName();
-                if (tag != null) tag = tag.toLowerCase();
-                if (!ALLOWED_ELEMENTS.contains(tag)) {
+                if (tag == null || !ALLOWED_ELEMENTS_LOWER.contains(tag.toLowerCase(Locale.ROOT))) {
                     node.removeChild(child);
                     continue;
                 }

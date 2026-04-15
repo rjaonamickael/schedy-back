@@ -12,6 +12,7 @@ import java.util.Optional;
 @Repository
 public interface SubscriptionRepository extends JpaRepository<Subscription, String> {
     Optional<Subscription> findByOrganisationId(String organisationId);
+    Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
     List<Subscription> findByOrganisationIdIn(Collection<String> organisationIds);
     List<Subscription> findByStatus(Subscription.SubscriptionStatus status);
     List<Subscription> findByPlanTier(Subscription.PlanTier planTier);

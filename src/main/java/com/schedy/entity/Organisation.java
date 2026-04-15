@@ -47,6 +47,20 @@ public class Organisation {
     @Column(name = "stat", length = 50)
     private String stat;
 
+    // Added by V45 migration — admin self-service profile fields
+    @Column(name = "legal_representative", length = 255)
+    private String legalRepresentative;
+
+    @Column(name = "contact_email", length = 255)
+    private String contactEmail;
+
+    @Column(name = "siret", length = 20)
+    private String siret;
+
+    // Added by V45 migration — Stripe customer reference (lazy-created)
+    @Column(name = "stripe_customer_id", length = 255)
+    private String stripeCustomerId;
+
     // Added by V26 migration — superadmin verification workflow
     @Column(name = "verification_status", length = 20, nullable = false)
     @Builder.Default

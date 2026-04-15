@@ -41,6 +41,15 @@ public class PlanTemplate {
     @Column(name = "price_annual", precision = 10, scale = 2)
     private BigDecimal priceAnnual;
 
+    // Added by V45 migration — Stripe Price ids per billing interval.
+    // Populated manually in the database after creating the prices in
+    // the Stripe Dashboard. Null until billing goes live.
+    @Column(name = "stripe_monthly_price_id", length = 255)
+    private String stripeMonthlyPriceId;
+
+    @Column(name = "stripe_annual_price_id", length = 255)
+    private String stripeAnnualPriceId;
+
     @Column(name = "trial_days", nullable = false)
     @Builder.Default
     private int trialDays = 0;

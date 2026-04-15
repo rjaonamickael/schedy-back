@@ -61,6 +61,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
+                        // Stripe webhook: signature verification IS the auth.
+                        // Stripe cannot present a JWT, so the path is permitAll
+                        // and the controller verifies the HMAC against the
+                        // configured webhook secret before any side effect.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/billing/webhook").permitAll()
                         .requestMatchers("/api/v1/pointage-codes/kiosk/**").permitAll()
                         .requestMatchers("/api/v1/pointage-codes/validate").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()

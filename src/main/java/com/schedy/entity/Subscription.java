@@ -44,6 +44,23 @@ public class Subscription {
     @Column(name = "promo_code_id")
     private String promoCodeId;
 
+    // Added by V45 migration — Stripe subscription mirror
+    @Column(name = "stripe_subscription_id", length = 255)
+    private String stripeSubscriptionId;
+
+    @Column(name = "stripe_price_id", length = 255)
+    private String stripePriceId;
+
+    @Column(name = "current_period_end")
+    private OffsetDateTime currentPeriodEnd;
+
+    @Column(name = "cancel_at_period_end", nullable = false)
+    @Builder.Default
+    private boolean cancelAtPeriodEnd = false;
+
+    @Column(name = "latest_invoice_status", length = 50)
+    private String latestInvoiceStatus;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

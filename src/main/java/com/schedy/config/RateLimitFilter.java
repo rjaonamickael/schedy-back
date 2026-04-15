@@ -75,6 +75,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
      */
     private final Map<String, BucketEntry> creneauWriteBuckets = new ConcurrentHashMap<>();
 
+    /**
+     * V45 BILLING : per-IP cap on Stripe Checkout / Customer Portal session
+     * creation. 10/min is more than enough for an honest admin clicking a
+     * button (one-shot redirect each time), and stops a bot from spamming
+     * the Stripe API and blowing through our rate budget there. Webhook
+     * deliveries are intentionally NOT rate-limited.
+     */
+    private final Map<String, BucketEntry> billingActionBuckets = new ConcurrentHashMap<>();
+
     private final Set<String> trustedProxies;
 
     public RateLimitFilter(
@@ -125,6 +134,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         } else if (path.startsWith("/api/v1/creneaux") && !"GET".equals(request.getMethod())) {
             // V33-03 SEC : limit drag-drop / batch / delete spam on creneau writes (60/min per IP)
             entry = resolveBucket(creneauWriteBuckets, ip, 60, Duration.ofMinutes(1));
+        } else if ((path.equals("/api/v1/billing/checkout-session")
+                    || path.equals("/api/v1/billing/portal-session"))
+                && "POST".equals(request.getMethod())) {
+            // V45 BILLING : 10/min per IP is generous for honest button-clicks
+            // and shields the Stripe API quota from runaway frontends or bots.
+            entry = resolveBucket(billingActionBuckets, ip, 10, Duration.ofMinutes(1));
         }
 
         if (entry != null && !entry.bucket().tryConsume(1)) {
@@ -189,6 +204,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         evicted += evictStaleEntries(refreshBuckets, threshold);
         evicted += evictStaleEntries(publicTestimonialBuckets, threshold);
         evicted += evictStaleEntries(creneauWriteBuckets, threshold);
+        evicted += evictStaleEntries(billingActionBuckets, threshold);
         if (evicted > 0) {
             log.debug("Rate limit buckets evicted ({} stale entries removed)", evicted);
         }
