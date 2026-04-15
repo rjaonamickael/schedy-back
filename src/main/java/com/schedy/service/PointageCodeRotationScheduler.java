@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -15,10 +14,31 @@ import java.util.List;
  * Checks every 60 seconds for active pointage codes whose validity window has expired
  * and issues a fresh rotation for each one.
  *
- * The rotation delegates to {@link PointageCodeService#createForSiteInternal}, which
- * owns its own transaction per site — keeping failures isolated so one bad site cannot
- * roll back all others. The read query here runs outside any transaction, which is
- * intentional and safe for a non-critical read-then-iterate pattern.
+ * <h2>IMPORTANT — DO NOT add {@code @Transactional} on this method</h2>
+ *
+ * <p>This method must NOT be wrapped in any transaction (read-only or otherwise).
+ * The previous version was annotated {@code @Transactional(readOnly = true)} with
+ * the intent of optimising the read snapshot. That broke rotation entirely : the
+ * inner {@link PointageCodeService#createForSiteInternal} call is annotated
+ * {@code @Transactional} (default propagation REQUIRED), so it joined the outer
+ * read-only transaction. PostgreSQL then refused every {@code INSERT}/{@code UPDATE}
+ * with "cannot execute UPDATE in a read-only transaction", the catch block
+ * swallowed the failure, and the scheduler tracked many "rotations attempted" while
+ * persisting absolutely nothing. End users observed expired codes that never rotated
+ * unless they reconnected and triggered a manual regeneration.
+ *
+ * <p>The read query is safe without an explicit transaction because :
+ * <ol>
+ *   <li>Spring Data JPA already wraps every repository method in a per-call
+ *       {@code @Transactional(readOnly = true)} via {@code SimpleJpaRepository},
+ *       so the read-only optimisation is preserved without an outer wrapper.</li>
+ *   <li>It is a single statement — PostgreSQL's MVCC gives the SELECT a consistent
+ *       snapshot atomically, so isolation level worries do not apply here.</li>
+ * </ol>
+ *
+ * <p>Each iteration of the loop relies on {@code createForSiteInternal}'s own
+ * transaction. Failures stay isolated per site — one bad site cannot roll back
+ * the others.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,24 +48,27 @@ public class PointageCodeRotationScheduler {
     private final PointageCodeRepository repository;
     private final PointageCodeService service;
 
-    // HIGH-07: @Transactional(readOnly=true) ensures the read query runs inside a transaction
-    // with a consistent snapshot. Without it the read is auto-committed, which can yield
-    // stale data on certain isolation levels. readOnly=true also hints to the connection
-    // pool/driver to avoid acquiring an unnecessary write lock on the replica.
-    @Transactional(readOnly = true)
     @Scheduled(fixedDelay = 60_000) // every 60 seconds
     public void rotateExpiredCodes() {
+        // Read in Spring Data JPA's auto-wrapped read-only tx (no outer @Transactional here !!).
         List<PointageCode> expired = repository.findByActifTrueAndValidToBefore(
                 OffsetDateTime.now(ZoneOffset.UTC));
 
+        if (expired.isEmpty()) {
+            return;
+        }
+
+        int rotated = 0;
         for (PointageCode code : expired) {
             try {
+                // Each call gets its own write transaction via the inner @Transactional.
                 service.createForSiteInternal(
                         code.getSiteId(),
                         code.getRotationValeur(),
                         code.getRotationUnite(),
                         code.getOrganisationId()
                 );
+                rotated++;
             } catch (Exception e) {
                 // Log and continue — one failing site must not block others
                 log.error("Failed to rotate code for site {} (org {}): {}",
@@ -53,8 +76,7 @@ public class PointageCodeRotationScheduler {
             }
         }
 
-        if (!expired.isEmpty()) {
-            log.info("Rotated {} expired pointage code(s)", expired.size());
-        }
+        log.info("Rotation cycle: {} expired code(s) found, {} rotated successfully",
+                expired.size(), rotated);
     }
 }
