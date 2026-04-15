@@ -731,6 +731,7 @@ public class EmployeService {
                     employe.getId(),
                     employe.getNom(),
                     firstSite,
+                    employe.getPrimaryRole(),
                     pinClair,
                     employe.getPinGeneratedAt(),
                     employe.getPinVersion()));
