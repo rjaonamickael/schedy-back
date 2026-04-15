@@ -17,6 +17,7 @@ import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
+import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.CryptoUtil;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final EmployeRepository employeRepository;
     private final OrganisationRepository organisationRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
@@ -320,9 +322,13 @@ public class AuthService {
 
     private UserProfileResponse toProfileResponse(User user) {
         String orgName = null;
+        String planTier = null;
         if (user.getOrganisationId() != null) {
             orgName = organisationRepository.findById(user.getOrganisationId())
                     .map(org -> org.getNom())
+                    .orElse(null);
+            planTier = subscriptionRepository.findByOrganisationId(user.getOrganisationId())
+                    .map(s -> s.getPlanTier().name())
                     .orElse(null);
         }
         return new UserProfileResponse(
@@ -331,7 +337,8 @@ public class AuthService {
                 user.getNom(),
                 user.getOrganisationId(),
                 orgName,
-                user.getEmployeId()
+                user.getEmployeId(),
+                planTier
         );
     }
 

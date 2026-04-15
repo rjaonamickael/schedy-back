@@ -6,5 +6,8 @@ public record UserProfileResponse(
     String nom,
     String organisationId,
     String organisationName,
-    String employeId
+    String employeId,
+    /** Current subscription tier of the user's org — drives client-side features like
+        the testimonial preview plan badge. Null when the org has no subscription row. */
+    String planTier
 ) {}

@@ -42,6 +42,64 @@ public class Testimonial {
     @Column(name = "quote", nullable = false, columnDefinition = "TEXT")
     private String quote;
 
+    /**
+     * Optional headline shown bold above the quote on the public card.
+     * Acts as a "catchy title" that sums the testimonial up in one line.
+     */
+    @Column(name = "quote_title", length = 200)
+    private String quoteTitle;
+
+    // ── V41 : rich testimonial fields ──────────────────────────────
+
+    /** LinkedIn profile URL of the author. Validated client + server side. */
+    @Column(name = "linkedin_url", length = 500)
+    private String linkedinUrl;
+
+    /** Public website of the author's organisation. */
+    @Column(name = "website_url", length = 500)
+    private String websiteUrl;
+
+    /** Facebook page / profile URL. */
+    @Column(name = "facebook_url", length = 500)
+    private String facebookUrl;
+
+    /** Instagram profile URL. */
+    @Column(name = "instagram_url", length = 500)
+    private String instagramUrl;
+
+    /** X (Twitter) profile URL. Column kept {@code twitter_url} for migration friendliness. */
+    @Column(name = "twitter_url", length = 500)
+    private String twitterUrl;
+
+    /**
+     * Public HTTPS URL of the sanitized logo stored on Cloudflare R2.
+     * Computed server-side during upload — the client never sets this directly.
+     */
+    @Column(name = "logo_url", length = 500)
+    private String logoUrl;
+
+    /** Optional: "problem faced" bullet in the structured testimonial template. */
+    @Column(name = "text_probleme", columnDefinition = "TEXT")
+    private String textProbleme;
+
+    /** Optional: "solution adopted" bullet. */
+    @Column(name = "text_solution", columnDefinition = "TEXT")
+    private String textSolution;
+
+    /** Optional: "measurable impact" bullet. */
+    @Column(name = "text_impact", columnDefinition = "TEXT")
+    private String textImpact;
+
+    /**
+     * V44 — denormalized subscription tier of the submitting organisation,
+     * stamped at submit time and never mutated. Preserves the original plan
+     * even if the org later upgrades or downgrades. Nullable for legacy rows
+     * and orgs without a subscription record.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plan_tier", length = 20)
+    private Subscription.PlanTier planTier;
+
     /** Star rating 1–5. */
     @Column(name = "stars", nullable = false)
     @Builder.Default

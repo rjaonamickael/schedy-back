@@ -165,6 +165,12 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- AWS SDK v2 S3 client — used against Cloudflare R2 (S3-compatible endpoint) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.28.16</version>
+        </dependency>
     </dependencies>
 
     <build>

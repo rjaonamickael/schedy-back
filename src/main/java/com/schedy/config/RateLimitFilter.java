@@ -65,6 +65,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, BucketEntry> twoFaBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> refreshBuckets = new ConcurrentHashMap<>();
     private final Map<String, BucketEntry> publicTestimonialBuckets = new ConcurrentHashMap<>();
+    /** Per-IP bucket for logo uploads. Caps the upload spam rate. */
+    private final Map<String, BucketEntry> testimonialLogoBuckets = new ConcurrentHashMap<>();
     /**
      * V33-03 SEC : per-IP bucket for write operations on /api/v1/creneaux/* (POST/PUT/DELETE).
      * Drag-and-drop ships in v33 and a malicious or buggy manager could spam thousands of
@@ -116,6 +118,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             entry = resolveBucket(waitlistBuckets, ip, 3, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/public/testimonials")) {
             entry = resolveBucket(publicTestimonialBuckets, ip, 60, Duration.ofMinutes(1));
+        } else if (path.startsWith("/api/v1/testimonials/logo")) {
+            // Cap logo uploads: 5/min per IP. Prevents a malicious user from
+            // filling R2 with junk even with a valid session.
+            entry = resolveBucket(testimonialLogoBuckets, ip, 5, Duration.ofMinutes(1));
         } else if (path.startsWith("/api/v1/creneaux") && !"GET".equals(request.getMethod())) {
             // V33-03 SEC : limit drag-drop / batch / delete spam on creneau writes (60/min per IP)
             entry = resolveBucket(creneauWriteBuckets, ip, 60, Duration.ofMinutes(1));

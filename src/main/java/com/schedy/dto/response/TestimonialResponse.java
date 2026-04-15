@@ -18,13 +18,27 @@ public record TestimonialResponse(
     String authorRole,
     String authorCity,
     String quote,
+    String quoteTitle,
     int stars,
     String language,
     String status,
     int displayOrder,
     OffsetDateTime createdAt,
     OffsetDateTime reviewedAt,
-    String reviewedBy
+    String reviewedBy,
+    // V41 rich fields
+    String linkedinUrl,
+    String websiteUrl,
+    String logoUrl,
+    String textProbleme,
+    String textSolution,
+    String textImpact,
+    // V42 social links
+    String facebookUrl,
+    String instagramUrl,
+    String twitterUrl,
+    // V44 subscription tier stamped at submit time (ESSENTIALS / STARTER / PRO or null)
+    String planTier
 
 ) {
     /** Factory that does not require an org name lookup (public endpoint). */
@@ -42,13 +56,24 @@ public record TestimonialResponse(
             entity.getAuthorRole(),
             entity.getAuthorCity(),
             entity.getQuote(),
+            entity.getQuoteTitle(),
             entity.getStars(),
             entity.getLanguage(),
             entity.getStatus().name(),
             entity.getDisplayOrder(),
             entity.getCreatedAt(),
             entity.getReviewedAt(),
-            entity.getReviewedBy()
+            entity.getReviewedBy(),
+            entity.getLinkedinUrl(),
+            entity.getWebsiteUrl(),
+            entity.getLogoUrl(),
+            entity.getTextProbleme(),
+            entity.getTextSolution(),
+            entity.getTextImpact(),
+            entity.getFacebookUrl(),
+            entity.getInstagramUrl(),
+            entity.getTwitterUrl(),
+            entity.getPlanTier() != null ? entity.getPlanTier().name() : null
         );
     }
 }

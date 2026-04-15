@@ -17,6 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 
 @Configuration
 @EnableWebSecurity
@@ -46,6 +47,17 @@ public class SecurityConfig {
                                 .policy("camera=(), microphone=(), geolocation=()"))
                 )
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Persist the SecurityContext as a request attribute so it survives
+                // Spring MVC async dispatch (CompletableFuture / DeferredResult returns).
+                // Without this, async endpoints that run after the controller returns a
+                // pending future hit AuthorizationFilter on the ASYNC dispatch with an
+                // empty SecurityContext and respond 403 with an empty body — even though
+                // the underlying service call already completed successfully on the
+                // original REQUEST thread. This is the canonical Spring Security 6 fix
+                // (see spring-projects/spring-security#14643). NO session is created:
+                // the context lives on the HttpServletRequest itself, not a session.
+                .securityContext(ctx -> ctx.securityContextRepository(
+                        new RequestAttributeSecurityContextRepository()))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
