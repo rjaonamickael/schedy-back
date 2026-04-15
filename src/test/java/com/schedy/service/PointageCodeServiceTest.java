@@ -77,38 +77,61 @@ class PointageCodeServiceTest {
     }
 
     // =========================================================================
-    // B-01 — KioskPointageCodeResponse must not expose a 'pin' field
+    // KioskPointageCodeResponse exposes the PIN so the kiosk screen can
+    // display it for employees who clock in via the PIN pad.
     // =========================================================================
 
     @Nested
-    @DisplayName("B-01 — KioskPointageCodeResponse record shape")
+    @DisplayName("KioskPointageCodeResponse record shape")
     class KioskResponseShape {
 
         @Test
-        @DisplayName("KioskPointageCodeResponse has exactly 7 components and no 'pin'")
-        void kioskResponse_hasSevenComponentsAndNoPinField() {
+        @DisplayName("KioskPointageCodeResponse has exactly 8 components including 'pin'")
+        void kioskResponse_includesPinField() {
             RecordComponent[] components = KioskPointageCodeResponse.class.getRecordComponents();
-            assertThat(components).hasSize(7);
+            assertThat(components).hasSize(8);
             Set<String> names = Arrays.stream(components)
                     .map(RecordComponent::getName)
                     .collect(Collectors.toSet());
-            assertThat(names).doesNotContain("pin");
+            assertThat(names).contains("pin");
             assertThat(names).containsExactlyInAnyOrder(
-                    "siteId", "code", "rotationValeur", "rotationUnite",
+                    "siteId", "code", "pin", "rotationValeur", "rotationUnite",
                     "validFrom", "validTo", "actif");
         }
 
         @Test
-        @DisplayName("getActiveForSitePublic() returns DTO without pin")
-        void getActiveForSitePublic_returnsKioskDto() {
+        @DisplayName("getActiveForSitePublic() decrypts the PIN before returning it")
+        void getActiveForSitePublic_returnsKioskDtoWithDecryptedPin() {
             PointageCode code = buildValidCode();
             when(pointageCodeRepository.findFirstBySiteIdAndActifTrueOrderByValidFromDesc(SITE_ID))
                     .thenReturn(Optional.of(code));
+            // The entity stores "ENC:123456" (ciphertext); the DTO must carry "123456" (plaintext).
+            when(pinEncryptionUtil.decrypt("ENC:123456")).thenReturn("123456");
+
             KioskPointageCodeResponse response = pointageCodeService.getActiveForSitePublic(SITE_ID);
+
             assertThat(response).isNotNull();
             assertThat(response.siteId()).isEqualTo(SITE_ID);
             assertThat(response.code()).isEqualTo("ABCD1234");
+            assertThat(response.pin())
+                    .as("kiosk DTO must expose the decrypted 6-digit PIN, not the ciphertext")
+                    .isEqualTo("123456");
             assertThat(response.actif()).isTrue();
+            verify(pinEncryptionUtil).decrypt("ENC:123456");
+        }
+
+        @Test
+        @DisplayName("getActiveForSitePublic() never exposes the raw encrypted PIN column")
+        void getActiveForSitePublic_neverLeaksCiphertext() {
+            PointageCode code = buildValidCode();
+            when(pointageCodeRepository.findFirstBySiteIdAndActifTrueOrderByValidFromDesc(SITE_ID))
+                    .thenReturn(Optional.of(code));
+            when(pinEncryptionUtil.decrypt("ENC:123456")).thenReturn("123456");
+
+            KioskPointageCodeResponse response = pointageCodeService.getActiveForSitePublic(SITE_ID);
+
+            assertThat(response.pin()).doesNotStartWith("ENC:");
+            assertThat(response.pin()).matches("\\d{6}");
         }
     }
 

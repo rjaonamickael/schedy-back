@@ -92,7 +92,8 @@ class EmployeControllerTest {
                 LocalDate.of(2023, 1, 15),
                 "1234", "org-1",
                 List.of(),
-                List.of("site-1"));
+                List.of("site-1"),
+                null, null); // V38 : numeroEmploye + genre (optional)
     }
 
     // ── GET / ────────────────────────────────────────────────────────────
@@ -170,7 +171,8 @@ class EmployeControllerTest {
     void create_returns400OnBlankNom() throws Exception {
         EmployeDto invalid = new EmployeDto(
                 null, "", List.of("Cuisinier"), null, "alice@example.com",
-                null, null, "1234", "org-1", List.of(), List.of());
+                null, null, "1234", "org-1", List.of(), List.of(),
+                null, null); // V38
 
         mockMvc.perform(post("/api/v1/employes")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -186,7 +188,8 @@ class EmployeControllerTest {
     void create_returns400OnShortPin() throws Exception {
         EmployeDto invalid = new EmployeDto(
                 null, "Alice", List.of("Cuisinier"), null, "alice@example.com",
-                null, null, "12", "org-1", List.of(), List.of());
+                null, null, "12", "org-1", List.of(), List.of(),
+                null, null); // V38
 
         mockMvc.perform(post("/api/v1/employes")
                         .contentType(MediaType.APPLICATION_JSON)

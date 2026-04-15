@@ -73,4 +73,36 @@ public interface CreneauAssigneRepository extends JpaRepository<CreneauAssigne, 
             @Param("siteId") String siteId,
             @Param("heureDebut") double heureDebut,
             @Param("heureFin") double heureFin);
+
+    /**
+     * Clock-in guard: finds all creneaux assigned to an employee at a site
+     * on a given week+day that cover the current decimal time
+     * {@code heureNow}, extended by a per-side tolerance (in hours).
+     *
+     * <p>An employee is authorised to clock in/out only when this returns
+     * at least one row. A single atomic query prevents TOCTOU between
+     * "looked up the schedule" and "saved the pointage" — the whole check
+     * runs against the same transactional snapshot.
+     *
+     * <p>The query uses arithmetic on decimal hours rather than time types
+     * because the entity stores {@code heureDebut}/{@code heureFin} as
+     * {@code double} (legacy schema, see {@link CreneauAssigne}).
+     */
+    @Query("SELECT c FROM CreneauAssigne c " +
+           "WHERE c.organisationId = :orgId " +
+           "  AND c.employeId = :employeId " +
+           "  AND c.siteId = :siteId " +
+           "  AND c.semaine = :semaine " +
+           "  AND c.jour = :jour " +
+           "  AND (c.heureDebut - :toleranceBeforeHours) <= :heureNow " +
+           "  AND (c.heureFin + :toleranceAfterHours) >= :heureNow")
+    List<CreneauAssigne> findActiveForClockIn(
+            @Param("orgId") String orgId,
+            @Param("employeId") String employeId,
+            @Param("siteId") String siteId,
+            @Param("semaine") String semaine,
+            @Param("jour") int jour,
+            @Param("heureNow") double heureNow,
+            @Param("toleranceBeforeHours") double toleranceBeforeHours,
+            @Param("toleranceAfterHours") double toleranceAfterHours);
 }

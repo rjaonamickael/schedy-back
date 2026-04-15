@@ -2,6 +2,7 @@ package com.schedy.dto.response;
 
 import com.schedy.entity.DisponibilitePlage;
 import com.schedy.entity.Employe;
+import com.schedy.entity.Genre;
 import com.schedy.entity.User;
 
 import java.time.Instant;
@@ -18,6 +19,9 @@ public record EmployeResponse(
         String email,
         LocalDate dateNaissance,
         LocalDate dateEmbauche,
+        // V38 : HR number + gender (both nullable).
+        String numeroEmploye,
+        Genre genre,
         List<DisponibilitePlage> disponibilites,
         List<String> siteIds,
         String systemRole,
@@ -38,6 +42,8 @@ public record EmployeResponse(
                 e.getEmail(),
                 e.getDateNaissance(),
                 e.getDateEmbauche(),
+                e.getNumeroEmploye(),
+                e.getGenre(),
                 e.getDisponibilites(),
                 e.getSiteIds(),
                 linkedUser != null ? linkedUser.getRole().name() : null,

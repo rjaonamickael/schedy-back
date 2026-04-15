@@ -5,8 +5,11 @@ import com.schedy.dto.request.PointerRequest;
 import com.schedy.dto.request.PointageManuelRequest;
 import com.schedy.dto.PointageDto;
 import com.schedy.entity.*;
+import com.schedy.exception.ClockInNotAuthorizedException;
 import com.schedy.exception.ResourceNotFoundException;
+import com.schedy.repository.CreneauAssigneRepository;
 import com.schedy.repository.OrganisationRepository;
+import com.schedy.repository.ParametresRepository;
 import com.schedy.repository.PointageRepository;
 import com.schedy.repository.UserRepository;
 import com.schedy.util.LocaleUtils;
@@ -23,10 +26,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.IsoFields;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +44,9 @@ public class PointageService {
     private final UserRepository userRepository;
     private final TenantContext tenantContext;
     private final OrganisationRepository organisationRepository;
+    private final PauseService pauseService;
+    private final CreneauAssigneRepository creneauRepository;
+    private final ParametresRepository parametresRepository;
 
     @Transactional(readOnly = true)
     public Page<Pointage> findAll(Pageable pageable) {
@@ -190,10 +198,105 @@ public class PointageService {
     /**
      * Public kiosk flow: creates a pointage with an explicitly provided organisationId
      * (resolved from the PointageCode), since TenantContext is not available for public endpoints.
+     *
+     * <p><b>Security — creneau guard.</b> Before any pointage is persisted the
+     * employee must have an active creneau at the target site:
+     * <ol>
+     *   <li>the creneau belongs to this employee + this site + current ISO
+     *       week + current day-of-week,</li>
+     *   <li>current time (in the organisation's timezone) falls within
+     *       {@code [heureDebut - toleranceAvant, heureFin + toleranceApres]}.</li>
+     * </ol>
+     * If either check fails the clock-in is rejected with a generic
+     * {@link ClockInNotAuthorizedException} — the concrete reason is preserved
+     * only in server-side audit logs so a kiosk operator cannot distinguish
+     * between "wrong PIN", "wrong site" or "not scheduled now" (info-leak
+     * guard — see audit trail in the WARN log line).
      */
     @Transactional
     public Pointage pointerFromKiosk(PointerRequest request, String organisationId) {
+        enforceCreneauGuard(request, organisationId);
         return buildAndSavePointage(request, organisationId);
+    }
+
+    /**
+     * Creneau guard for kiosk clock-ins. Runs a single atomic repository
+     * query against the current transactional snapshot (no TOCTOU) and
+     * throws {@link ClockInNotAuthorizedException} with a precise audit
+     * reason when the employee is not allowed to clock in.
+     */
+    private void enforceCreneauGuard(PointerRequest request, String organisationId) {
+        final String employeId = request.employeId();
+        final String siteId = request.siteId();
+        if (employeId == null || siteId == null) {
+            rejectAndLog(employeId, siteId, "null employeId or siteId",
+                    ClockInNotAuthorizedException.Reason.UNKNOWN);
+        }
+
+        // Resolve "now" in the organisation's timezone — creneaux are stored
+        // as decimal hours relative to the org's local calendar, so UTC or a
+        // hard-coded zone would mis-align at day boundaries.
+        final ZoneId orgZone = resolveOrgZone(organisationId);
+        final LocalDateTime nowLocal = LocalDateTime.now(orgZone);
+        final LocalDate today = nowLocal.toLocalDate();
+
+        final String semaine = toIsoWeek(today);
+        final int jour = today.getDayOfWeek().getValue() - 1; // 0=Mon..6=Sun
+        final double heureNow = nowLocal.toLocalTime().getHour()
+                + nowLocal.toLocalTime().getMinute() / 60.0;
+
+        // Load per-org tolerance (site-scoped params override org defaults if present).
+        final Parametres params = parametresRepository
+                .findBySiteIdAndOrganisationId(siteId, organisationId)
+                .or(() -> parametresRepository.findBySiteIdIsNullAndOrganisationId(organisationId))
+                .orElse(null);
+        final int toleranceBeforeMinutes = params != null && params.getToleranceAvantShiftMinutes() != null
+                ? params.getToleranceAvantShiftMinutes() : 30;
+        final int toleranceAfterMinutes = params != null && params.getToleranceApresShiftMinutes() != null
+                ? params.getToleranceApresShiftMinutes() : 30;
+        final double toleranceBeforeH = toleranceBeforeMinutes / 60.0;
+        final double toleranceAfterH = toleranceAfterMinutes / 60.0;
+
+        final List<CreneauAssigne> active = creneauRepository.findActiveForClockIn(
+                organisationId, employeId, siteId, semaine, jour,
+                heureNow, toleranceBeforeH, toleranceAfterH);
+
+        if (!active.isEmpty()) {
+            log.info("Clock-in authorized: employe={} site={} jour={} heure={} creneaux={}",
+                    employeId, siteId, jour, heureNow, active.size());
+            return;
+        }
+
+        // Empty result: distinguish NO_CRENEAU_TODAY vs OUTSIDE_TOLERANCE_WINDOW
+        // for the audit log (client always sees the generic message).
+        final List<CreneauAssigne> sameDay = creneauRepository
+                .findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(employeId, semaine, siteId, organisationId)
+                .stream()
+                .filter(c -> c.getJour() == jour)
+                .toList();
+        final ClockInNotAuthorizedException.Reason reason = sameDay.isEmpty()
+                ? ClockInNotAuthorizedException.Reason.NO_CRENEAU_TODAY
+                : ClockInNotAuthorizedException.Reason.OUTSIDE_TOLERANCE_WINDOW;
+
+        rejectAndLog(employeId, siteId,
+                String.format("jour=%d heure=%.2f tolBefore=%dmin tolAfter=%dmin sameDayCreneaux=%d",
+                        jour, heureNow, toleranceBeforeMinutes, toleranceAfterMinutes, sameDay.size()),
+                reason);
+    }
+
+    /** Builds the audit log entry and throws the generic exception. */
+    private void rejectAndLog(String employeId, String siteId, String detail,
+                              ClockInNotAuthorizedException.Reason reason) {
+        log.warn("Clock-in REJECTED reason={} employe={} site={} detail={{{}}}",
+                reason, employeId, siteId, detail);
+        throw new ClockInNotAuthorizedException(reason);
+    }
+
+    /** ISO-8601 week label matching the frontend/planning service convention. */
+    private static String toIsoWeek(LocalDate date) {
+        int year = date.get(IsoFields.WEEK_BASED_YEAR);
+        int week = date.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+        return String.format("%d-W%02d", year, week);
     }
 
     private TypePointage parseTypePointage(String value) {
@@ -290,6 +393,14 @@ public class PointageService {
 
         Pointage saved = pointageRepository.save(pointage);
         log.info("Pointage created: employe={}, type={}, site={}, statut={}", employeId, type, siteId, statut);
+
+        // Layer 3 pause auto-detection: when an employee clocks back in after a sortie,
+        // check the gap and record a DETECTE pause if it fits the org's detection window.
+        // Runs within the same transaction — failures are caught by the service itself.
+        if (saved.getType() == TypePointage.entree && saved.getStatut() == StatutPointage.valide) {
+            pauseService.detectFromPointage(saved);
+        }
+
         return saved;
     }
 

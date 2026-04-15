@@ -45,5 +45,11 @@ public record ParametresDto(
     // Pause Layer 3: detection window
     @Min(0) @Max(480) Integer fenetrePauseMinMinutes,
     @Min(0) @Max(480) Integer fenetrePauseMaxMinutes,
-    Boolean pauseRenoncementAutorise
+    Boolean pauseRenoncementAutorise,
+
+    // Clock-in security: creneau guard tolerance windows (minutes).
+    // 0 = exact boundary. Upper bound 480 = 8h, beyond which the guard
+    // stops being a meaningful security check.
+    @Min(0) @Max(480) Integer toleranceAvantShiftMinutes,
+    @Min(0) @Max(480) Integer toleranceApresShiftMinutes
 ) {}

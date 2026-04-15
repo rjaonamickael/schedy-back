@@ -119,6 +119,10 @@ public class ParametresService {
         if (dto.fenetrePauseMinMinutes() != null) parametres.setFenetrePauseMinMinutes(dto.fenetrePauseMinMinutes());
         if (dto.fenetrePauseMaxMinutes() != null) parametres.setFenetrePauseMaxMinutes(dto.fenetrePauseMaxMinutes());
         if (dto.pauseRenoncementAutorise() != null) parametres.setPauseRenoncementAutorise(dto.pauseRenoncementAutorise());
+
+        // Clock-in security — creneau guard tolerance windows
+        if (dto.toleranceAvantShiftMinutes() != null) parametres.setToleranceAvantShiftMinutes(dto.toleranceAvantShiftMinutes());
+        if (dto.toleranceApresShiftMinutes() != null) parametres.setToleranceApresShiftMinutes(dto.toleranceApresShiftMinutes());
     }
 
     /**

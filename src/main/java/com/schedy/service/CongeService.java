@@ -76,6 +76,9 @@ public class CongeService {
                 .dateDebutValidite(dto.dateDebutValidite())
                 .dateFinValidite(dto.dateFinValidite())
                 .organisationId(orgId)
+                .genresEligibles(dto.genresEligibles() != null
+                        ? new java.util.HashSet<>(dto.genresEligibles())
+                        : new java.util.HashSet<>())
                 .build();
         TypeConge saved = typeCongeRepository.save(type);
 
@@ -105,6 +108,12 @@ public class CongeService {
         type.setAutoriserDepassement(typeLimite == TypeLimite.ENVELOPPE_ANNUELLE && dto.autoriserDepassement());
         type.setDateDebutValidite(dto.dateDebutValidite());
         type.setDateFinValidite(dto.dateFinValidite());
+        // V39 : clear-and-addAll keeps the same Set instance managed by Hibernate
+        // so the @ElementCollection diff stays minimal on update.
+        type.getGenresEligibles().clear();
+        if (dto.genresEligibles() != null) {
+            type.getGenresEligibles().addAll(dto.genresEligibles());
+        }
         TypeConge saved = typeCongeRepository.save(type);
 
         // Note : we deliberately DO NOT propagate quota changes to existing banques here.
@@ -137,8 +146,16 @@ public class CongeService {
         LocalDate dateFin = today.plusYears(1);
 
         int created = 0;
+        int skipped = 0;
         for (Employe emp : employes) {
             if (existingEmployeIds.contains(emp.getId())) continue;
+            // V39 : gender-based eligibility filter. Skip employees whose
+            // genre doesn't match the type's restriction (or who have no
+            // genre set when a restriction exists).
+            if (!type.isEligibleFor(emp.getGenre())) {
+                skipped++;
+                continue;
+            }
             BanqueConge banque = BanqueConge.builder()
                     .employeId(emp.getId())
                     .typeCongeId(type.getId())
@@ -152,8 +169,9 @@ public class CongeService {
             banqueCongeRepository.save(banque);
             created++;
         }
-        if (created > 0) {
-            log.info("Auto-provisioned {} banque(s) for type '{}' in org {}", created, type.getNom(), orgId);
+        if (created > 0 || skipped > 0) {
+            log.info("Auto-provisioned {} banque(s) for type '{}' in org {} (skipped {} for genre filter)",
+                    created, type.getNom(), orgId, skipped);
         }
     }
 
@@ -166,6 +184,11 @@ public class CongeService {
         List<TypeConge> types = typeCongeRepository.findByOrganisationId(orgId);
         if (types.isEmpty()) return;
 
+        // V39 : we need the employee's genre to filter restricted types.
+        // A null genre rules out any restricted type — see TypeConge.isEligibleFor.
+        Employe employe = employeRepository.findByIdAndOrganisationId(employeId, orgId).orElse(null);
+        Genre empGenre = employe != null ? employe.getGenre() : null;
+
         List<BanqueConge> existing = banqueCongeRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
         Set<String> existingTypeIds = existing.stream()
                 .map(BanqueConge::getTypeCongeId)
@@ -175,8 +198,14 @@ public class CongeService {
         LocalDate dateFin = today.plusYears(1);
 
         int created = 0;
+        int skipped = 0;
         for (TypeConge type : types) {
             if (existingTypeIds.contains(type.getId())) continue;
+            // V39 : gender-based eligibility filter
+            if (!type.isEligibleFor(empGenre)) {
+                skipped++;
+                continue;
+            }
             BanqueConge banque = BanqueConge.builder()
                     .employeId(employeId)
                     .typeCongeId(type.getId())
@@ -190,8 +219,9 @@ public class CongeService {
             banqueCongeRepository.save(banque);
             created++;
         }
-        if (created > 0) {
-            log.info("Auto-provisioned {} banque(s) for employe {} in org {}", created, employeId, orgId);
+        if (created > 0 || skipped > 0) {
+            log.info("Auto-provisioned {} banque(s) for employe {} in org {} (skipped {} for genre filter)",
+                    created, employeId, orgId, skipped);
         }
     }
 

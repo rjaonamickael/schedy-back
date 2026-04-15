@@ -38,6 +38,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
     }
 
+    /**
+     * Clock-in guard rejection. Returns the generic user message — the
+     * concrete {@code reason} is NEVER sent to the client (info-leak guard)
+     * and is already logged server-side by {@code PointageService}.
+     */
+    @ExceptionHandler(ClockInNotAuthorizedException.class)
+    public ResponseEntity<Map<String, Object>> handleClockInNotAuthorized(ClockInNotAuthorizedException ex) {
+        return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, ClockInNotAuthorizedException.GENERIC_MESSAGE);
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(IllegalStateException ex) {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());

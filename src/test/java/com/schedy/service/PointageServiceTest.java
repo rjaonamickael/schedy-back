@@ -4,7 +4,11 @@ import com.schedy.config.TenantContext;
 import com.schedy.dto.PointageDto;
 import com.schedy.dto.request.PointerRequest;
 import com.schedy.entity.*;
+import com.schedy.exception.ClockInNotAuthorizedException;
 import com.schedy.exception.ResourceNotFoundException;
+import com.schedy.repository.CreneauAssigneRepository;
+import com.schedy.repository.OrganisationRepository;
+import com.schedy.repository.ParametresRepository;
 import com.schedy.repository.PointageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,14 +20,25 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.IsoFields;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.doubleThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,6 +47,10 @@ class PointageServiceTest {
 
     @Mock private PointageRepository pointageRepository;
     @Mock private TenantContext tenantContext;
+    @Mock private PauseService pauseService;
+    @Mock private CreneauAssigneRepository creneauRepository;
+    @Mock private ParametresRepository parametresRepository;
+    @Mock private OrganisationRepository organisationRepository;
 
     @InjectMocks private PointageService pointageService;
 
@@ -44,6 +63,21 @@ class PointageServiceTest {
     void setUp() {
         // lenient because some tests (e.g. pointerFromKiosk) must NOT call this
         lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
+        // Default authorization path: a fake creneau is active NOW. The
+        // security-focused nested class overrides this with empty lists.
+        lenient().when(creneauRepository.findActiveForClockIn(
+                        anyString(), anyString(), anyString(), anyString(),
+                        anyInt(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(new CreneauAssigne()));
+        // Org timezone resolution — default to UTC so tests don't need to stub
+        // the organisation repository unless they care about timezone semantics.
+        lenient().when(organisationRepository.findById(anyString()))
+                .thenReturn(Optional.empty());
+        // Default tolerance params = null → service falls back to 30/30 defaults.
+        lenient().when(parametresRepository.findBySiteIdAndOrganisationId(anyString(), anyString()))
+                .thenReturn(Optional.empty());
+        lenient().when(parametresRepository.findBySiteIdIsNullAndOrganisationId(anyString()))
+                .thenReturn(Optional.empty());
     }
 
     // -------------------------------------------------------------------------
@@ -280,19 +314,406 @@ class PointageServiceTest {
         @DisplayName("applies the same entry/exit detection logic as pointer()")
         void pointerFromKiosk_appliesEntryExitLogic() {
             String kioskOrgId = "kiosk-org-999";
-            PointerRequest request = new PointerRequest(EMPLOYE_ID, null, "qr");
+            // Kiosk flow always carries a site (the guard rejects null siteId).
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "qr");
             Pointage lastEntree = Pointage.builder()
                     .employeId(EMPLOYE_ID).type(TypePointage.entree)
                     .horodatage(OffsetDateTime.now(ZoneOffset.UTC).minusHours(4))
                     .methode(MethodePointage.qr).statut(StatutPointage.valide)
-                    .organisationId(kioskOrgId).build();
-            when(pointageRepository.findTopByEmployeIdAndOrganisationIdOrderByHorodatageDesc(
-                    EMPLOYE_ID, kioskOrgId)).thenReturn(Optional.of(lastEntree));
+                    .siteId(SITE_ID).organisationId(kioskOrgId).build();
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.of(lastEntree));
             when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             Pointage result = pointageService.pointerFromKiosk(request, kioskOrgId);
 
             assertThat(result.getType()).isEqualTo(TypePointage.sortie);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // pointerFromKiosk() — Creneau-guard security tests
+    //
+    // These tests exercise every branch of `enforceCreneauGuard` to make sure
+    // an employee cannot clock in unless they have a matching creneau active
+    // right now on the target site. Each test uses explicit stubs for the
+    // creneau repository so the shared lenient default in setUp() is overridden.
+    // -------------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("pointerFromKiosk() — creneau-guard security")
+    class PointerFromKioskSecurity {
+
+        private final String kioskOrgId = "kiosk-org-999";
+
+        /**
+         * Helper: stub the planning repository to simulate "employee has an
+         * active creneau NOW on this site". The list contents don't matter —
+         * only the non-empty return does.
+         */
+        private void stubActiveCreneau() {
+            when(creneauRepository.findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), anyDouble(), anyDouble()))
+                    .thenReturn(List.of(new CreneauAssigne()));
+        }
+
+        /** Helper: simulate "no creneau of any kind for this employee today". */
+        private void stubNoCreneauAtAll() {
+            when(creneauRepository.findActiveForClockIn(
+                    anyString(), anyString(), anyString(),
+                    anyString(), anyInt(), anyDouble(), anyDouble(), anyDouble()))
+                    .thenReturn(Collections.emptyList());
+            when(creneauRepository.findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(
+                    anyString(), anyString(), anyString(), anyString()))
+                    .thenReturn(Collections.emptyList());
+        }
+
+        /**
+         * Helper: simulate "employee has a creneau TODAY on this site but
+         * the current time falls outside the tolerance window". Same-day
+         * creneaux are returned but the active query comes back empty.
+         */
+        private void stubCreneauTodayButOutsideTolerance() {
+            when(creneauRepository.findActiveForClockIn(
+                    anyString(), anyString(), anyString(),
+                    anyString(), anyInt(), anyDouble(), anyDouble(), anyDouble()))
+                    .thenReturn(Collections.emptyList());
+            // Return one same-day creneau to force OUTSIDE_TOLERANCE_WINDOW branch
+            CreneauAssigne sameDay = CreneauAssigne.builder()
+                    .employeId(EMPLOYE_ID)
+                    .siteId(SITE_ID)
+                    .organisationId(kioskOrgId)
+                    .semaine(currentIsoWeek())
+                    .jour(currentJourOfWeek())
+                    .heureDebut(3.0)
+                    .heureFin(5.0)
+                    .build();
+            when(creneauRepository.findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(
+                    anyString(), anyString(), anyString(), anyString()))
+                    .thenReturn(List.of(sameDay));
+        }
+
+        private static String currentIsoWeek() {
+            LocalDate d = LocalDate.now();
+            int year = d.get(IsoFields.WEEK_BASED_YEAR);
+            int week = d.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+            return String.format("%d-W%02d", year, week);
+        }
+
+        private static int currentJourOfWeek() {
+            return LocalDate.now().getDayOfWeek().getValue() - 1;
+        }
+
+        @Test
+        @DisplayName("allows clock-in when employee has an active creneau NOW on this site")
+        void allowsClockInWhenActiveCreneauExists() {
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            Pointage result = pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            assertThat(result).isNotNull();
+            assertThat(result.getEmployeId()).isEqualTo(EMPLOYE_ID);
+            assertThat(result.getSiteId()).isEqualTo(SITE_ID);
+            verify(pointageRepository).save(any(Pointage.class));
+        }
+
+        @Test
+        @DisplayName("rejects with NO_CRENEAU_TODAY when employee is not scheduled today at all")
+        void rejectsWhenNoCreneauAtAll() {
+            stubNoCreneauAtAll();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+
+            assertThatThrownBy(() -> pointageService.pointerFromKiosk(request, kioskOrgId))
+                    .isInstanceOf(ClockInNotAuthorizedException.class)
+                    .extracting(ex -> ((ClockInNotAuthorizedException) ex).getReason())
+                    .isEqualTo(ClockInNotAuthorizedException.Reason.NO_CRENEAU_TODAY);
+
+            verify(pointageRepository, never()).save(any(Pointage.class));
+        }
+
+        @Test
+        @DisplayName("rejects with OUTSIDE_TOLERANCE_WINDOW when a same-day creneau exists but not active now")
+        void rejectsWhenOutsideToleranceWindow() {
+            stubCreneauTodayButOutsideTolerance();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+
+            assertThatThrownBy(() -> pointageService.pointerFromKiosk(request, kioskOrgId))
+                    .isInstanceOf(ClockInNotAuthorizedException.class)
+                    .extracting(ex -> ((ClockInNotAuthorizedException) ex).getReason())
+                    .isEqualTo(ClockInNotAuthorizedException.Reason.OUTSIDE_TOLERANCE_WINDOW);
+
+            verify(pointageRepository, never()).save(any(Pointage.class));
+        }
+
+        @Test
+        @DisplayName("rejects with UNKNOWN when request carries a null employeId (defensive)")
+        void rejectsNullEmployeId() {
+            PointerRequest request = new PointerRequest(null, SITE_ID, "pin");
+
+            assertThatThrownBy(() -> pointageService.pointerFromKiosk(request, kioskOrgId))
+                    .isInstanceOf(ClockInNotAuthorizedException.class)
+                    .extracting(ex -> ((ClockInNotAuthorizedException) ex).getReason())
+                    .isEqualTo(ClockInNotAuthorizedException.Reason.UNKNOWN);
+
+            verify(pointageRepository, never()).save(any(Pointage.class));
+        }
+
+        @Test
+        @DisplayName("rejects with UNKNOWN when request carries a null siteId (defensive)")
+        void rejectsNullSiteId() {
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, null, "pin");
+
+            assertThatThrownBy(() -> pointageService.pointerFromKiosk(request, kioskOrgId))
+                    .isInstanceOf(ClockInNotAuthorizedException.class)
+                    .extracting(ex -> ((ClockInNotAuthorizedException) ex).getReason())
+                    .isEqualTo(ClockInNotAuthorizedException.Reason.UNKNOWN);
+
+            verify(pointageRepository, never()).save(any(Pointage.class));
+        }
+
+        @Test
+        @DisplayName("passes the tolerance config from per-site params to the active-creneau query")
+        void respectsPerSiteTolerance() {
+            Parametres siteParams = Parametres.builder()
+                    .toleranceAvantShiftMinutes(15)
+                    .toleranceApresShiftMinutes(45)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.of(siteParams));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            // 15 min before = 0.25h, 45 min after = 0.75h
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), eq(0.25), eq(0.75));
+        }
+
+        @Test
+        @DisplayName("falls back to org-wide params when no site-scoped row exists")
+        void fallsBackToOrgParams() {
+            Parametres orgParams = Parametres.builder()
+                    .toleranceAvantShiftMinutes(10)
+                    .toleranceApresShiftMinutes(10)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.empty());
+            when(parametresRepository.findBySiteIdIsNullAndOrganisationId(kioskOrgId))
+                    .thenReturn(Optional.of(orgParams));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            // 10/60 = 0.1666... — assert close to 10 min in hours
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(),
+                    doubleThat(v -> Math.abs(v - 10.0 / 60.0) < 1e-9),
+                    doubleThat(v -> Math.abs(v - 10.0 / 60.0) < 1e-9));
+        }
+
+        @Test
+        @DisplayName("generic exception message never leaks the audit reason")
+        void genericMessageNeverLeaksReason() {
+            stubNoCreneauAtAll();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+
+            ClockInNotAuthorizedException thrown = assertThrows(
+                    ClockInNotAuthorizedException.class,
+                    () -> pointageService.pointerFromKiosk(request, kioskOrgId));
+
+            assertThat(thrown.getMessage()).isEqualTo(ClockInNotAuthorizedException.GENERIC_MESSAGE);
+            assertThat(thrown.getMessage()).doesNotContain("NO_CRENEAU");
+            assertThat(thrown.getMessage()).doesNotContain("WRONG");
+            assertThat(thrown.getMessage()).doesNotContain("OUTSIDE");
+        }
+
+        @Test
+        @DisplayName("pointage is never persisted when the guard rejects")
+        void rejectionNeverPersists() {
+            stubNoCreneauAtAll();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+
+            assertThrows(ClockInNotAuthorizedException.class,
+                    () -> pointageService.pointerFromKiosk(request, kioskOrgId));
+
+            verify(pointageRepository, never()).save(any(Pointage.class));
+            verifyNoInteractions(pauseService);
+        }
+
+        @Test
+        @DisplayName("guard passes employeId + siteId + orgId unchanged to the repository query")
+        void guardPassesCorrectIdsToRepository() {
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), anyDouble(), anyDouble());
+        }
+
+        @Test
+        @DisplayName("falls back to hardcoded 30/30 when no Parametres row exists at all")
+        void fallsBackToHardcodedDefaultsWhenNoParamsRow() {
+            // Both site-scoped AND org-wide params return empty
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.empty());
+            when(parametresRepository.findBySiteIdIsNullAndOrganisationId(kioskOrgId))
+                    .thenReturn(Optional.empty());
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            // 30 min / 60 = 0.5h on each side — defensive default kicks in
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(),
+                    doubleThat(v -> Math.abs(v - 0.5) < 1e-9),
+                    doubleThat(v -> Math.abs(v - 0.5) < 1e-9));
+        }
+
+        @Test
+        @DisplayName("honours a ZERO tolerance (strict boundaries) when configured")
+        void honoursZeroToleranceWhenConfigured() {
+            Parametres strict = Parametres.builder()
+                    .toleranceAvantShiftMinutes(0)
+                    .toleranceApresShiftMinutes(0)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.of(strict));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), eq(0.0), eq(0.0));
+        }
+
+        @Test
+        @DisplayName("honours a large (60 min before) tolerance so an employee at 7h15 for an 8h shift passes")
+        void honoursLargeBeforeTolerance() {
+            // Product use case: admin sets "Avant" to 60 min in settings.
+            Parametres wide = Parametres.builder()
+                    .toleranceAvantShiftMinutes(60)
+                    .toleranceApresShiftMinutes(30)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.of(wide));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            // 60 min before = 1.0h, 30 min after = 0.5h
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), eq(1.0), eq(0.5));
+        }
+
+        @Test
+        @DisplayName("null tolerance fields on the Parametres row fall back to 30/30 defaults")
+        void nullToleranceFieldsFallBackToDefaults() {
+            // A Parametres row exists but the new tolerance columns haven't
+            // been populated (e.g. legacy row from before the V40 migration).
+            Parametres legacy = Parametres.builder()
+                    .toleranceAvantShiftMinutes(null)
+                    .toleranceApresShiftMinutes(null)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.of(legacy));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(),
+                    doubleThat(v -> Math.abs(v - 0.5) < 1e-9),
+                    doubleThat(v -> Math.abs(v - 0.5) < 1e-9));
+        }
+
+        @Test
+        @DisplayName("site-scoped tolerance overrides org-wide tolerance (per-site wins)")
+        void siteToleranceOverridesOrgTolerance() {
+            Parametres orgWide = Parametres.builder()
+                    .toleranceAvantShiftMinutes(30)
+                    .toleranceApresShiftMinutes(30)
+                    .build();
+            Parametres siteSpecific = Parametres.builder()
+                    .toleranceAvantShiftMinutes(90)
+                    .toleranceApresShiftMinutes(5)
+                    .build();
+            when(parametresRepository.findBySiteIdAndOrganisationId(SITE_ID, kioskOrgId))
+                    .thenReturn(Optional.of(siteSpecific));
+            // Org-wide stub is never consulted because site row exists.
+            lenient().when(parametresRepository.findBySiteIdIsNullAndOrganisationId(kioskOrgId))
+                    .thenReturn(Optional.of(orgWide));
+            stubActiveCreneau();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+            when(pointageRepository.findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(
+                    EMPLOYE_ID, SITE_ID, kioskOrgId)).thenReturn(Optional.empty());
+            when(pointageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            pointageService.pointerFromKiosk(request, kioskOrgId);
+
+            // 90 min / 60 = 1.5h, 5 min / 60 ≈ 0.0833h — NOT 30/30 (org defaults)
+            verify(creneauRepository).findActiveForClockIn(
+                    eq(kioskOrgId), eq(EMPLOYE_ID), eq(SITE_ID),
+                    anyString(), anyInt(), anyDouble(), eq(1.5),
+                    doubleThat(v -> Math.abs(v - 5.0 / 60.0) < 1e-9));
+            verify(parametresRepository, never()).findBySiteIdIsNullAndOrganisationId(anyString());
+        }
+
+        @Test
+        @DisplayName("audit log fires for every reject path (reason always set)")
+        void auditLogFiresOnReject() {
+            stubNoCreneauAtAll();
+            PointerRequest request = new PointerRequest(EMPLOYE_ID, SITE_ID, "pin");
+
+            ClockInNotAuthorizedException thrown = assertThrows(
+                    ClockInNotAuthorizedException.class,
+                    () -> pointageService.pointerFromKiosk(request, kioskOrgId));
+
+            // The reason field is what the audit log reads from; verify it is set,
+            // machine-readable, and matches one of the enum values.
+            assertThat(thrown.getReason()).isNotNull();
+            assertThat(thrown.getReason())
+                    .isIn(ClockInNotAuthorizedException.Reason.values());
         }
     }
 

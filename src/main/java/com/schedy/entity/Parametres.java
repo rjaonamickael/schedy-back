@@ -149,4 +149,20 @@ public class Parametres {
     @Builder.Default
     @Column(name = "delai_signalement_absence_minutes", columnDefinition = "integer default 60")
     private Integer delaiSignalementAbsenceMinutes = 60;
+
+    // ── Clock-in security (kiosk creneau guard) ─────────────────────
+    // An employee is allowed to clock in only when they have an active
+    // creneau on the site. These tolerance windows extend the creneau
+    // boundaries so employees arriving slightly early / leaving slightly
+    // late still succeed. 0 = no tolerance (exact boundaries).
+
+    /** Minutes before heureDebut during which the employee may clock in. */
+    @Builder.Default
+    @Column(name = "tolerance_avant_shift_minutes", columnDefinition = "integer default 30")
+    private Integer toleranceAvantShiftMinutes = 30;
+
+    /** Minutes after heureFin during which the employee may still clock out. */
+    @Builder.Default
+    @Column(name = "tolerance_apres_shift_minutes", columnDefinition = "integer default 30")
+    private Integer toleranceApresShiftMinutes = 30;
 }

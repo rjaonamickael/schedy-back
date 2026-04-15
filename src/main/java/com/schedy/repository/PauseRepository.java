@@ -15,6 +15,15 @@ public interface PauseRepository extends JpaRepository<Pause, String> {
     List<Pause> findByOrganisationIdAndDebutBetween(
             String organisationId, OffsetDateTime from, OffsetDateTime to);
     Optional<Pause> findByIdAndOrganisationId(String id, String organisationId);
+
+    /**
+     * Duplicate guard for Layer 3 auto-detection: returns any existing pause
+     * already bound to this (entree, sortie) pair, regardless of source.
+     * Prevents re-creating a Pause on re-entry if the detection hook fires twice.
+     */
+    Optional<Pause> findByPointageEntreeIdAndPointageSortieId(
+            String pointageEntreeId, String pointageSortieId);
+
     @Modifying @Transactional
     void deleteByOrganisationId(String organisationId);
 }

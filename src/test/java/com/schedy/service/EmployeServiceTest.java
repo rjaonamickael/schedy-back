@@ -145,7 +145,8 @@ class EmployeServiceTest {
         @DisplayName("encodes PIN with bcrypt and stores SHA-256 pinHash")
         void create_encodesPin_and_computesPinHash() {
             EmployeDto dto = new EmployeDto(null, "Alice", List.of("employe"), null, null,
-                    null, null, RAW_PIN, null, List.of(), List.of());
+                    null, null, RAW_PIN, null, List.of(), List.of(),
+                    null, null); // V38 : numeroEmploye + genre
             when(passwordEncoder.encode(RAW_PIN)).thenReturn(ENCODED_PIN);
             ArgumentCaptor<Employe> captor = ArgumentCaptor.forClass(Employe.class);
             when(employeRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
@@ -164,7 +165,8 @@ class EmployeServiceTest {
         @DisplayName("stores null pin and null pinHash when dto.pin() is null")
         void create_nullPin_storesBothNull() {
             EmployeDto dto = new EmployeDto(null, "Bob", List.of("employe"), null, null,
-                    null, null, null, null, List.of(), List.of());
+                    null, null, null, null, List.of(), List.of(),
+                    null, null); // V38
             ArgumentCaptor<Employe> captor = ArgumentCaptor.forClass(Employe.class);
             when(employeRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -180,7 +182,8 @@ class EmployeServiceTest {
         @DisplayName("sets organisationId from TenantContext")
         void create_savesWithOrg() {
             EmployeDto dto = new EmployeDto(null, "Alice", List.of("employe"), "0600000000",
-                    "alice@example.com", null, null, "1234", null, List.of(), List.of("site-1"));
+                    "alice@example.com", null, null, "1234", null, List.of(), List.of("site-1"),
+                    null, null); // V38
             when(passwordEncoder.encode(any())).thenReturn(ENCODED_PIN);
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -210,7 +213,8 @@ class EmployeServiceTest {
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
             EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
-                    null, null, null, null, newPin, null, List.of(), List.of());
+                    null, null, null, null, newPin, null, List.of(), List.of(),
+                    null, null); // V38
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(passwordEncoder.encode(newPin)).thenReturn(newEncoded);
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -231,7 +235,8 @@ class EmployeServiceTest {
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
             EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
-                    null, null, null, null, null, null, List.of(), List.of());
+                    null, null, null, null, null, null, List.of(), List.of(),
+                    null, null); // V38
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -252,7 +257,8 @@ class EmployeServiceTest {
                     .disponibilites(new ArrayList<>()).siteIds(new ArrayList<>())
                     .build();
             EmployeDto dto = new EmployeDto(EMPLOYE_ID, "Alice Updated", List.of("employe"),
-                    null, null, null, null, "   ", null, List.of(), List.of());
+                    null, null, null, null, "   ", null, List.of(), List.of(),
+                    null, null); // V38
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.of(existing));
             when(employeRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -265,7 +271,8 @@ class EmployeServiceTest {
         @DisplayName("throws ResourceNotFoundException when employee does not exist")
         void update_nonExisting_throwsResourceNotFoundException() {
             EmployeDto dto = new EmployeDto(EMPLOYE_ID, "X", null, null, null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null,
+                    null, null); // V38
             when(employeRepository.findByIdAndOrganisationId(EMPLOYE_ID, ORG_ID)).thenReturn(Optional.empty());
 
             assertThrows(ResourceNotFoundException.class, () -> employeService.update(EMPLOYE_ID, dto));

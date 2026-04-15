@@ -42,7 +42,11 @@ public record ParametresResponse(
         // Pause Layer 3: detection window
         Integer fenetrePauseMinMinutes,
         Integer fenetrePauseMaxMinutes,
-        Boolean pauseRenoncementAutorise
+        Boolean pauseRenoncementAutorise,
+
+        // Clock-in security (kiosk creneau guard)
+        Integer toleranceAvantShiftMinutes,
+        Integer toleranceApresShiftMinutes
 ) {
     public static ParametresResponse from(Parametres p) {
         return new ParametresResponse(
@@ -78,7 +82,10 @@ public record ParametresResponse(
                 // Pause Layer 3
                 p.getFenetrePauseMinMinutes(),
                 p.getFenetrePauseMaxMinutes(),
-                p.getPauseRenoncementAutorise()
+                p.getPauseRenoncementAutorise(),
+                // Clock-in security
+                p.getToleranceAvantShiftMinutes(),
+                p.getToleranceApresShiftMinutes()
         );
     }
 }

@@ -129,7 +129,7 @@ public class PointageCodeService {
     /**
      * Public kiosk endpoint: returns the active code for a site if one exists and is valid.
      * Never creates or regenerates codes — that is strictly an authenticated operation.
-     * Returns KioskPointageCodeResponse (no PIN) to prevent PIN exposure on public endpoint.
+     * The PIN is included in the response so the kiosk screen can display it.
      */
     @Transactional(readOnly = true)
     public KioskPointageCodeResponse getActiveForSitePublic(String siteId) {
@@ -474,12 +474,24 @@ public class PointageCodeService {
     }
 
     /**
-     * Builds the public kiosk DTO. PIN is intentionally excluded (B-01 fix).
+     * Builds the public kiosk DTO. The PIN is decrypted before being sent to
+     * the kiosk so employees can read the numeric code on screen. The stored
+     * {@code pin} column is AES-256-GCM encrypted at rest — forgetting the
+     * decrypt step here leaks the ciphertext (base64 blob) to the UI instead
+     * of the 6-digit code. Mirrors the decryption step in {@link #toDto}.
      */
     private KioskPointageCodeResponse toKioskDto(PointageCode pc) {
+        String decryptedPin;
+        try {
+            decryptedPin = pinEncryptionUtil.decrypt(pc.getPin());
+        } catch (Exception e) {
+            log.error("Failed to decrypt PIN for kiosk code {}: {}", pc.getId(), e.getMessage());
+            decryptedPin = null;
+        }
         return new KioskPointageCodeResponse(
                 pc.getSiteId(),
                 pc.getCode(),
+                decryptedPin,
                 pc.getRotationValeur(),
                 pc.getRotationUnite().name(),
                 pc.getValidFrom().toString(),

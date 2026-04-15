@@ -22,8 +22,9 @@ public class PointageCode {
     private String code;
 
     /**
-     * Raw PIN — only visible to authenticated admin/managers via PointageCodeDto.
-     * Never exposed on public endpoints (KioskPointageCodeResponse excludes it).
+     * Raw PIN — displayed on the kiosk screen so employees can clock in via
+     * the PIN pad. Exposed both via the authenticated PointageCodeDto (admin)
+     * and the public KioskPointageCodeResponse (kiosk display).
      */
     @Column(nullable = false)
     private String pin;

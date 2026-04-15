@@ -11,6 +11,7 @@ public record PauseResponse(
         String id,
         String employeId,
         String siteId,
+        String organisationId,
         OffsetDateTime debut,
         OffsetDateTime fin,
         Integer dureeMinutes,
@@ -18,6 +19,8 @@ public record PauseResponse(
         SourcePause source,
         StatutPause statut,
         boolean payee,
+        String pointageEntreeId,
+        String pointageSortieId,
         String confirmeParId,
         OffsetDateTime confirmeAt,
         String motifContestation
@@ -27,6 +30,7 @@ public record PauseResponse(
                 p.getId(),
                 p.getEmployeId(),
                 p.getSiteId(),
+                p.getOrganisationId(),
                 p.getDebut(),
                 p.getFin(),
                 p.getDureeMinutes(),
@@ -34,6 +38,8 @@ public record PauseResponse(
                 p.getSource(),
                 p.getStatut(),
                 p.isPayee(),
+                p.getPointageEntreeId(),
+                p.getPointageSortieId(),
                 p.getConfirmeParId(),
                 p.getConfirmeAt(),
                 p.getMotifContestation()

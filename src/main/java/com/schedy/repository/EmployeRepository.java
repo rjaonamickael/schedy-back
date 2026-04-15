@@ -61,6 +61,8 @@ public interface EmployeRepository extends JpaRepository<Employe, String> {
     List<Object[]> countGroupedByOrganisationId(@Param("orgIds") Collection<String> orgIds);
     boolean existsByEmailAndOrganisationId(String email, String organisationId);
     Optional<Employe> findByEmailAndOrganisationId(String email, String organisationId);
+    /** V38 : uniqueness guard for numero_employe within a single organisation. */
+    boolean existsByNumeroEmployeAndOrganisationId(String numeroEmploye, String organisationId);
     @Modifying @Transactional
     void deleteByOrganisationId(String organisationId);
 }

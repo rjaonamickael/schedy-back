@@ -105,6 +105,26 @@ public class Employe {
 
     private LocalDate dateEmbauche;
 
+    /**
+     * V38 : Alphanumeric employee number issued by the organisation.
+     * Free-form string (letters + digits only, no special chars) constrained
+     * at the DTO / service level via {@code @Pattern}. Uniqueness is enforced
+     * per-organisation through {@code idx_employe_num_org_unique} so two
+     * organisations can reuse the same number without conflict. Nullable :
+     * legacy rows pre-V38 and employees without a HR number stay {@code null}.
+     */
+    @Column(name = "numero_employe")
+    private String numeroEmploye;
+
+    /**
+     * V38 : Employee gender for maternity-leave eligibility and reporting.
+     * See {@link Genre} — nullable on purpose (legacy rows + employees who
+     * decline to answer both surface as {@code null}).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "genre")
+    private Genre genre;
+
     @JsonIgnore
     private String pin;         // BCrypt hash for verification
 

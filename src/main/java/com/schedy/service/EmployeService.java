@@ -147,6 +147,15 @@ public class EmployeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un employ\u00e9 avec l'email " + dto.email() + " existe d\u00e9j\u00e0.");
         }
+        // V38 : HR number uniqueness per organisation. Two orgs may reuse the
+        // same number — the composite index (org, numero) handles that — but
+        // inside a single org the number must be unique.
+        String numero = dto.numeroEmploye() != null ? dto.numeroEmploye().trim() : null;
+        if (numero != null && !numero.isEmpty()
+                && employeRepository.existsByNumeroEmployeAndOrganisationId(numero, orgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un employ\u00e9 avec le num\u00e9ro " + numero + " existe d\u00e9j\u00e0.");
+        }
         // Require at least one site when the organisation has sites
         long siteCount = siteRepository.countByOrganisationId(orgId);
         if (siteCount > 0 && (dto.siteIds() == null || dto.siteIds().isEmpty())) {
@@ -161,6 +170,8 @@ public class EmployeService {
                 .email(dto.email())
                 .dateNaissance(dto.dateNaissance())
                 .dateEmbauche(dto.dateEmbauche())
+                .numeroEmploye(numero != null && numero.isEmpty() ? null : numero)
+                .genre(dto.genre())
                 .pin(dto.pin() != null ? passwordEncoder.encode(dto.pin()) : null)
                 .pinHash(dto.pin() != null ? CryptoUtil.sha256(dto.pin()) : null)
                 .pinClair(dto.pin() != null ? pinEncryptionUtil.encrypt(dto.pin()) : null)
@@ -220,6 +231,16 @@ public class EmployeService {
                         "Un employ\u00e9 avec l'email " + dto.email() + " existe d\u00e9j\u00e0.");
             }
         }
+        // V38 : HR number uniqueness check on update — only when the value
+        // actually changes, so an employee can be updated without touching
+        // their number. Blank string is normalised to null.
+        String numero = dto.numeroEmploye() != null ? dto.numeroEmploye().trim() : null;
+        if (numero != null && numero.isEmpty()) numero = null;
+        if (numero != null && !numero.equals(employe.getNumeroEmploye())
+                && employeRepository.existsByNumeroEmployeAndOrganisationId(numero, orgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un employ\u00e9 avec le num\u00e9ro " + numero + " existe d\u00e9j\u00e0.");
+        }
         employe.setNom(dto.nom());
         // Sprint 16 : clear-and-addAll keeps the same List instance managed by Hibernate.
         if (dto.roles() != null) {
@@ -228,6 +249,8 @@ public class EmployeService {
         }
         employe.setTelephone(dto.telephone());
         employe.setEmail(dto.email());
+        employe.setNumeroEmploye(numero);
+        employe.setGenre(dto.genre());
         // Fix CODE-01: guard nullable date fields — do not overwrite existing
         // values with null on partial updates (would break anciennete/age rules)
         if (dto.dateNaissance() != null) {

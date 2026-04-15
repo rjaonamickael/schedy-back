@@ -101,7 +101,8 @@ class CongeControllerTest {
                 TYPE_ID, "Vacances", true, "heures",
                 "#10B981", "ENVELOPPE_ANNUELLE", 200.0,
                 null, null, false,
-                null, null, "org-1");
+                null, null, "org-1",
+                null); // V39 : genresEligibles (open to all)
     }
 
     private TypeConge sampleType() {
@@ -290,7 +291,8 @@ class CongeControllerTest {
                 null, "", true, "heures",
                 "#10B981", "ENVELOPPE_ANNUELLE", 200.0,
                 null, null, false,
-                null, null, "org-1");
+                null, null, "org-1",
+                null); // V39
 
         mockMvc.perform(post("/api/v1/conges/types")
                         .contentType(MediaType.APPLICATION_JSON)

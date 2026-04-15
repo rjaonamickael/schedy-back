@@ -42,6 +42,12 @@ public interface PointageRepository extends JpaRepository<Pointage, String> {
     List<Pointage> findByStatutAndSiteIdAndOrganisationId(StatutPointage statut, String siteId, String organisationId);
     Optional<Pointage> findTopByEmployeIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String organisationId);
     Optional<Pointage> findTopByEmployeIdAndSiteIdAndOrganisationIdOrderByHorodatageDesc(String employeId, String siteId, String organisationId);
+    /** Pause-detection helper : returns the latest pointage strictly before the given horodatage. */
+    Optional<Pointage> findTopByEmployeIdAndOrganisationIdAndHorodatageLessThanOrderByHorodatageDesc(
+            String employeId, String organisationId, OffsetDateTime horodatage);
+    /** Pause-detection helper, site-scoped. */
+    Optional<Pointage> findTopByEmployeIdAndSiteIdAndOrganisationIdAndHorodatageLessThanOrderByHorodatageDesc(
+            String employeId, String siteId, String organisationId, OffsetDateTime horodatage);
     List<Pointage> findByEmployeIdAndOrganisationIdAndHorodatageBetweenOrderByHorodatageDesc(String employeId, String organisationId, OffsetDateTime start, OffsetDateTime end);
     @Modifying @Transactional
     void deleteByEmployeIdAndOrganisationId(String employeId, String organisationId);
