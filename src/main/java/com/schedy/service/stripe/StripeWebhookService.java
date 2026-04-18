@@ -60,11 +60,12 @@ public class StripeWebhookService {
                 case "customer.subscription.trial_will_end" -> organisationId = handleTrialWillEnd(event);
                 case "invoice.paid" -> organisationId = handleInvoicePaid(event);
                 case "invoice.payment_failed" -> organisationId = handleInvoicePaymentFailed(event);
+                case "invoice.payment_action_required" -> organisationId = handlePaymentActionRequired(event);
                 default -> log.info("Stripe webhook ignored unhandled event={} type={}", event.getId(), event.getType());
             }
         } catch (Exception processing) {
             log.error("Stripe webhook handler failed event={} type={}", event.getId(), event.getType(), processing);
-            return false;
+            throw processing;
         }
 
         record.setProcessedAt(OffsetDateTime.now());
@@ -174,6 +175,9 @@ public class StripeWebhookService {
             local.setStatus(Subscription.SubscriptionStatus.CANCELLED);
             local.setCancelAtPeriodEnd(false);
             local.setStripeSubscriptionId(null);
+            local.setMaxEmployees(15);
+            local.setMaxSites(1);
+            local.setPlanTier(Subscription.PlanTier.ESSENTIALS);
             subscriptionRepository.save(local);
         });
         return orgId;
@@ -185,6 +189,8 @@ public class StripeWebhookService {
         String orgId = readMetadataOrgId(stripeSub.getMetadata());
         if (orgId == null) orgId = resolveOrgFromCustomer(stripeSub.getCustomer());
         log.info("Stripe trial_will_end org={} sub={} ends={}", orgId, stripeSub.getId(), stripeSub.getTrialEnd());
+        log.warn("ACTION REQUIRED: trial ending soon for org={} sub={}, email notification not yet implemented", orgId, stripeSub.getId());
+        // TODO S18r: send trial_will_end notification email to org admin via EmailService
         return orgId;
     }
 
@@ -215,7 +221,17 @@ public class StripeWebhookService {
             local.setLatestInvoiceStatus("payment_failed");
             subscriptionRepository.save(local);
         });
-        log.warn("Stripe invoice payment_failed org={} invoice={}", orgId, invoice.getId());
+        log.error("Stripe invoice payment_failed org={} invoice={}", orgId, invoice.getId());
+        // TODO S18r: send payment failure notification email to org admin via EmailService
+        return orgId;
+    }
+
+    private String handlePaymentActionRequired(Event event) {
+        StripeObject raw = deserialize(event);
+        if (!(raw instanceof Invoice invoice)) return null;
+        String orgId = resolveOrgFromCustomer(invoice.getCustomer());
+        log.warn("Stripe payment action required (SCA/3DS) org={} invoice={}", orgId, invoice.getId());
+        // TODO S18r: send SCA/3DS action-required notification email to org admin
         return orgId;
     }
 

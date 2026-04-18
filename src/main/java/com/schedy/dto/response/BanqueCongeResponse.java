@@ -12,7 +12,8 @@ public record BanqueCongeResponse(
         double utilise,
         double enAttente,
         LocalDate dateDebut,
-        LocalDate dateFin
+        LocalDate dateFin,
+        String organisationId
 ) {
     public static BanqueCongeResponse from(BanqueConge b) {
         return new BanqueCongeResponse(
@@ -23,7 +24,8 @@ public record BanqueCongeResponse(
                 b.getUtilise(),
                 b.getEnAttente(),
                 b.getDateDebut(),
-                b.getDateFin()
+                b.getDateFin(),
+                b.getOrganisationId()
         );
     }
 }

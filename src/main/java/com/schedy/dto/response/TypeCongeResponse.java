@@ -23,7 +23,8 @@ public record TypeCongeResponse(
         boolean autoriserDepassement,
         LocalDate dateDebutValidite,
         LocalDate dateFinValidite,
-        Set<Genre> genresEligibles
+        Set<Genre> genresEligibles,
+        String organisationId
 ) {
     public static TypeCongeResponse from(TypeConge t) {
         return new TypeCongeResponse(
@@ -39,7 +40,8 @@ public record TypeCongeResponse(
                 t.isAutoriserDepassement(),
                 t.getDateDebutValidite(),
                 t.getDateFinValidite(),
-                t.getGenresEligibles() != null ? new HashSet<>(t.getGenresEligibles()) : new HashSet<>()
+                t.getGenresEligibles() != null ? new HashSet<>(t.getGenresEligibles()) : new HashSet<>(),
+                t.getOrganisationId()
         );
     }
 }

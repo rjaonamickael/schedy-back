@@ -9,7 +9,9 @@ public record CreneauAssigneResponse(
         double heureDebut,
         double heureFin,
         String semaine,
-        String siteId
+        String siteId,
+        String role,
+        boolean publie
 ) {
     public static CreneauAssigneResponse from(CreneauAssigne c) {
         return new CreneauAssigneResponse(
@@ -19,7 +21,9 @@ public record CreneauAssigneResponse(
                 c.getHeureDebut(),
                 c.getHeureFin(),
                 c.getSemaine(),
-                c.getSiteId()
+                c.getSiteId(),
+                c.getRole(),
+                c.isPublie()
         );
     }
 }

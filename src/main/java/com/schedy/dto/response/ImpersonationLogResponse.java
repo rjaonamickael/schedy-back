@@ -8,7 +8,7 @@ public record ImpersonationLogResponse(
         String id,
         String superadminEmail,
         String targetOrgId,
-        String organisationName,
+        String targetOrgName,
         String reason,
         String ipAddress,
         OffsetDateTime startedAt,

@@ -1,5 +1,7 @@
 package com.schedy.config;
 
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,8 +10,10 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Configuration
 public class CorsConfig {
 
@@ -18,6 +22,21 @@ public class CorsConfig {
 
     @Value("${spring.profiles.active:dev}")
     private String activeProfile;
+
+    @PostConstruct
+    void validateCorsProfile() {
+        if ("dev".equals(activeProfile)) {
+            boolean hasNonLocal = Arrays.stream(allowedOrigins.split(","))
+                    .anyMatch(o -> !o.contains("localhost") && !o.contains("127.0.0.1"));
+            if (hasNonLocal) {
+                log.error("SECURITY: dev profile active with non-localhost allowed origin '{}'. "
+                        + "LAN CORS wildcards are enabled. Set SPRING_PROFILES_ACTIVE=prod for production.", allowedOrigins);
+                throw new IllegalStateException("Dev CORS profile detected with production-like origins. "
+                        + "Set SPRING_PROFILES_ACTIVE=prod");
+            }
+            log.warn("CORS: dev profile active — LAN wildcard patterns enabled for mobile testing");
+        }
+    }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

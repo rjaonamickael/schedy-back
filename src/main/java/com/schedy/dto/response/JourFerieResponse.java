@@ -9,7 +9,8 @@ public record JourFerieResponse(
         String nom,
         LocalDate date,
         boolean recurrent,
-        String siteId
+        String siteId,
+        String organisationId
 ) {
     public static JourFerieResponse from(JourFerie j) {
         return new JourFerieResponse(
@@ -17,7 +18,8 @@ public record JourFerieResponse(
                 j.getNom(),
                 j.getDate(),
                 j.isRecurrent(),
-                j.getSiteId()
+                j.getSiteId(),
+                j.getOrganisationId()
         );
     }
 }

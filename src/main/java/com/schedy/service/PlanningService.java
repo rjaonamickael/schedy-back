@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,11 @@ public class PlanningService {
     /** Maximum hours allowed in a single creneau (sanity bound; org parametres can be stricter). */
     private static final double MAX_HEURES_CRENEAU = 16.0;
 
+    /**
+     * Paginated, admin-oriented view (no employee filter). Les endpoints métier
+     * par semaine/employé passent par filterPublieForCaller ; findAll n'est pas
+     * utilisé par le dashboard employé.
+     */
     @Transactional(readOnly = true)
     public Page<CreneauAssigne> findAll(Pageable pageable) {
         String orgId = tenantContext.requireOrganisationId();
@@ -44,44 +51,48 @@ public class PlanningService {
     @Transactional(readOnly = true)
     public CreneauAssigne findById(String id) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findByIdAndOrganisationId(id, orgId)
+        CreneauAssigne c = creneauRepository.findByIdAndOrganisationId(id, orgId)
                 .orElseThrow(() -> new ResourceNotFoundException("Creneau", id));
+        if (isCallerEmployee() && !c.isPublie()) {
+            throw new ResourceNotFoundException("Creneau", id);
+        }
+        return c;
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findBySemaine(String semaine) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findBySemaineAndOrganisationId(semaine, orgId);
+        return filterPublieForCaller(creneauRepository.findBySemaineAndOrganisationId(semaine, orgId));
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findBySemaineAndSite(String semaine, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findBySemaineAndSiteIdAndOrganisationId(semaine, siteId, orgId);
+        return filterPublieForCaller(creneauRepository.findBySemaineAndSiteIdAndOrganisationId(semaine, siteId, orgId));
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeId(String employeId) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findByEmployeIdAndOrganisationId(employeId, orgId);
+        return filterPublieForCaller(creneauRepository.findByEmployeIdAndOrganisationId(employeId, orgId));
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSite(String employeId, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findByEmployeIdAndSiteIdAndOrganisationId(employeId, siteId, orgId);
+        return filterPublieForCaller(creneauRepository.findByEmployeIdAndSiteIdAndOrganisationId(employeId, siteId, orgId));
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSemaine(String employeId, String semaine) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findByEmployeIdAndSemaineAndOrganisationId(employeId, semaine, orgId);
+        return filterPublieForCaller(creneauRepository.findByEmployeIdAndSemaineAndOrganisationId(employeId, semaine, orgId));
     }
 
     @Transactional(readOnly = true)
     public List<CreneauAssigne> findByEmployeIdAndSemaineAndSite(String employeId, String semaine, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
-        return creneauRepository.findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(employeId, semaine, siteId, orgId);
+        return filterPublieForCaller(creneauRepository.findByEmployeIdAndSemaineAndSiteIdAndOrganisationId(employeId, semaine, siteId, orgId));
     }
 
     @Transactional(readOnly = true)
@@ -109,6 +120,8 @@ public class PlanningService {
                                 .siteId(dto.siteId())
                                 .role(dto.role())
                                 .organisationId(orgId)
+                                // V47 : nouveau créneau = brouillon par défaut
+                                .publie(false)
                                 .build()));
     }
 
@@ -125,6 +138,8 @@ public class PlanningService {
                         .siteId(dto.siteId())
                         .role(dto.role())
                         .organisationId(orgId)
+                        // V47 : nouveau créneau = brouillon par défaut
+                        .publie(false)
                         .build()
         ).toList();
         return creneauRepository.saveAll(creneaux);
@@ -151,6 +166,11 @@ public class PlanningService {
      *
      * <p><b>V33-05 SEC</b> : on success, the change is logged in a structured slf4j format
      * (key=value pairs) so a future log parser can reconstruct who moved what.</p>
+     *
+     * <p><b>V47</b> : toute édition d'un créneau sur semaine courante ou future repasse
+     * le créneau en brouillon (publie=false). Les éditions d'historique (semaine passée)
+     * laissent publie inchangé pour ne pas faire disparaître le planning historique des
+     * employés.</p>
      */
     @Transactional
     public CreneauAssigne update(String id, CreneauAssigneDto dto) {
@@ -165,6 +185,7 @@ public class PlanningService {
         double prevFin = creneau.getHeureFin();
         String prevSemaine = creneau.getSemaine();
         String prevSiteId = creneau.getSiteId();
+        boolean prevPublie = creneau.isPublie();
 
         // Run all validations against the proposed payload BEFORE touching the entity
         validateCreneauUpdate(orgId, id, dto);
@@ -177,14 +198,21 @@ public class PlanningService {
         creneau.setSiteId(dto.siteId());
         // Sprint 16 / Feature 2 : capture which role the employee is filling on this creneau.
         creneau.setRole(dto.role());
+
+        // V47 : repasser en brouillon uniquement si l'édition concerne une
+        // semaine courante ou future. Les éditions sur historique (semaine
+        // passée) laissent publie inchangé.
+        if (isSemaineCurrentOrFuture(dto.semaine())) {
+            creneau.setPublie(false);
+        }
         CreneauAssigne saved = creneauRepository.save(creneau);
 
         // V33-05 SEC : structured audit log (no PII beyond IDs)
         log.info(
-            "audit.creneau.update orgId={} creneauId={} prev=[employe={},semaine={},jour={},h={}-{},site={}] new=[employe={},semaine={},jour={},h={}-{},site={}]",
+            "audit.creneau.update orgId={} creneauId={} prev=[employe={},semaine={},jour={},h={}-{},site={},publie={}] new=[employe={},semaine={},jour={},h={}-{},site={},publie={}]",
             orgId, id,
-            prevEmployeId, prevSemaine, prevJour, prevDebut, prevFin, prevSiteId,
-            dto.employeId(), dto.semaine(), dto.jour(), dto.heureDebut(), dto.heureFin(), dto.siteId()
+            prevEmployeId, prevSemaine, prevJour, prevDebut, prevFin, prevSiteId, prevPublie,
+            dto.employeId(), dto.semaine(), dto.jour(), dto.heureDebut(), dto.heureFin(), dto.siteId(), saved.isPublie()
         );
 
         return saved;
@@ -298,5 +326,91 @@ public class PlanningService {
     public void deleteBySemaineAndSite(String semaine, String siteId) {
         String orgId = tenantContext.requireOrganisationId();
         creneauRepository.deleteBySemaineAndSiteIdAndOrganisationId(semaine, siteId, orgId);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // V47 : workflow brouillon → publication
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * V47 : publie tous les créneaux brouillons d'une semaine pour l'organisation
+     * courante. Si siteId est non null, limite au site concerné.
+     *
+     * @return nombre de créneaux effectivement passés de brouillon à publié.
+     */
+    @Transactional
+    public int publier(String semaine, String siteId) {
+        String orgId = tenantContext.requireOrganisationId();
+        int count = creneauRepository.publierBrouillons(orgId, semaine, siteId);
+        log.info("audit.creneau.publier orgId={} semaine={} siteId={} count={}",
+                orgId, semaine, siteId, count);
+        return count;
+    }
+
+    /**
+     * V47 : supprime tous les créneaux brouillons d'une semaine pour l'organisation
+     * courante. Si siteId est non null, limite au site concerné.
+     *
+     * @return nombre de créneaux supprimés.
+     */
+    @Transactional
+    public int supprimerBrouillons(String semaine, String siteId) {
+        String orgId = tenantContext.requireOrganisationId();
+        int count = creneauRepository.supprimerBrouillons(orgId, semaine, siteId);
+        log.info("audit.creneau.supprimerBrouillons orgId={} semaine={} siteId={} count={}",
+                orgId, semaine, siteId, count);
+        return count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Helpers V47
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * V47 : l'utilisateur courant est-il un EMPLOYE (pas ADMIN ni MANAGER) ?
+     * Les EMPLOYES ne doivent voir que les créneaux publie=true.
+     */
+    private boolean isCallerEmployee() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities() == null) return false;
+        boolean isAdminOrManager = auth.getAuthorities().stream().anyMatch(a -> {
+            String r = a.getAuthority();
+            return "ROLE_ADMIN".equals(r)
+                || "ROLE_MANAGER".equals(r)
+                || "ROLE_SUPERADMIN".equals(r);
+        });
+        if (isAdminOrManager) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_EMPLOYEE".equals(a.getAuthority()));
+    }
+
+    /**
+     * V47 : filtre une liste de créneaux selon le rôle de l'appelant.
+     * ADMIN/MANAGER : voit tout. EMPLOYE : uniquement publie=true.
+     */
+    private List<CreneauAssigne> filterPublieForCaller(List<CreneauAssigne> list) {
+        if (!isCallerEmployee()) return list;
+        return list.stream().filter(CreneauAssigne::isPublie).toList();
+    }
+
+    /**
+     * V47 : la semaine (format ISO "YYYY-Www") est-elle la semaine courante ou une
+     * semaine future ? Utilisé pour décider si un update doit repasser le créneau
+     * en brouillon (historique = reste publié).
+     */
+    private boolean isSemaineCurrentOrFuture(String semaine) {
+        if (semaine == null || !semaine.matches("\\d{4}-W\\d{1,2}")) return true;
+        try {
+            String[] parts = semaine.split("-W");
+            int year = Integer.parseInt(parts[0]);
+            int week = Integer.parseInt(parts[1]);
+            LocalDate now = LocalDate.now();
+            int currentYear = now.get(WeekFields.ISO.weekBasedYear());
+            int currentWeek = now.get(WeekFields.ISO.weekOfWeekBasedYear());
+            if (year > currentYear) return true;
+            if (year < currentYear) return false;
+            return week >= currentWeek;
+        } catch (NumberFormatException e) {
+            return true; // on doute → on remet en brouillon (fail-safe)
+        }
     }
 }

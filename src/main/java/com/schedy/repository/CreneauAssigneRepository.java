@@ -94,6 +94,7 @@ public interface CreneauAssigneRepository extends JpaRepository<CreneauAssigne, 
            "  AND c.siteId = :siteId " +
            "  AND c.semaine = :semaine " +
            "  AND c.jour = :jour " +
+           "  AND c.publie = true " +
            "  AND (c.heureDebut - :toleranceBeforeHours) <= :heureNow " +
            "  AND (c.heureFin + :toleranceAfterHours) >= :heureNow")
     List<CreneauAssigne> findActiveForClockIn(
@@ -105,4 +106,51 @@ public interface CreneauAssigneRepository extends JpaRepository<CreneauAssigne, 
             @Param("heureNow") double heureNow,
             @Param("toleranceBeforeHours") double toleranceBeforeHours,
             @Param("toleranceAfterHours") double toleranceAfterHours);
+
+    /**
+     * V47 : flip tous les créneaux `publie=false` d'une semaine (optionnellement
+     * scopée par site) à `publie=true`. Action admin/manager atomique.
+     *
+     * @return nombre de lignes mises à jour
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("UPDATE CreneauAssigne c SET c.publie = true " +
+           "WHERE c.organisationId = :orgId " +
+           "  AND c.semaine = :semaine " +
+           "  AND c.publie = false " +
+           "  AND (:siteId IS NULL OR c.siteId = :siteId)")
+    int publierBrouillons(@Param("orgId") String orgId,
+                          @Param("semaine") String semaine,
+                          @Param("siteId") String siteId);
+
+    /**
+     * V47 : supprime tous les créneaux `publie=false` d'une semaine (optionnellement
+     * scopée par site). Utilisé par l'action "Annuler le brouillon".
+     *
+     * @return nombre de lignes supprimées
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM CreneauAssigne c " +
+           "WHERE c.organisationId = :orgId " +
+           "  AND c.semaine = :semaine " +
+           "  AND c.publie = false " +
+           "  AND (:siteId IS NULL OR c.siteId = :siteId)")
+    int supprimerBrouillons(@Param("orgId") String orgId,
+                            @Param("semaine") String semaine,
+                            @Param("siteId") String siteId);
+
+    /**
+     * V47 : compteur de créneaux brouillons sur une semaine (scopé org, optionnel site).
+     * Utilisé pour bannière "N modifications non publiées" côté front (alt au computed).
+     */
+    @Query("SELECT COUNT(c) FROM CreneauAssigne c " +
+           "WHERE c.organisationId = :orgId " +
+           "  AND c.semaine = :semaine " +
+           "  AND c.publie = false " +
+           "  AND (:siteId IS NULL OR c.siteId = :siteId)")
+    long countBrouillons(@Param("orgId") String orgId,
+                         @Param("semaine") String semaine,
+                         @Param("siteId") String siteId);
 }

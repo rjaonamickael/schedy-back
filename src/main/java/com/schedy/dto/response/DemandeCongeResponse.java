@@ -16,7 +16,8 @@ public record DemandeCongeResponse(
         double duree,
         StatutDemande statut,
         String motif,
-        String noteApprobation
+        String noteApprobation,
+        String organisationId
 ) {
     public static DemandeCongeResponse from(DemandeConge d) {
         return new DemandeCongeResponse(
@@ -30,7 +31,8 @@ public record DemandeCongeResponse(
                 d.getDuree(),
                 d.getStatut(),
                 d.getMotif(),
-                d.getNoteApprobation()
+                d.getNoteApprobation(),
+                d.getOrganisationId()
         );
     }
 }

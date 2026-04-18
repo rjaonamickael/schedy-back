@@ -60,4 +60,17 @@ public class CreneauAssigne {
 
     @Column(name = "organisation_id")
     private String organisationId;
+
+    /**
+     * V47 : flag de publication. Un créneau en brouillon (publie=false) n'est
+     * visible que des admins/managers ; il devient visible aux employés
+     * uniquement après un appel explicite à POST /creneaux/publier.
+     *
+     * <p>Les créneaux créés via POST/batch/auto-affectation ou modifiés via PUT
+     * sur la semaine courante ou future naissent ou repassent à publie=false.
+     * Les éditions sur des semaines passées laissent publie inchangé.</p>
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean publie = false;
 }

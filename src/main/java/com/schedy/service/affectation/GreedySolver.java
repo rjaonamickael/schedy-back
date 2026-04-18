@@ -181,6 +181,8 @@ public class GreedySolver implements AffectationSolver {
                             // so the UI can display it and Plan B can match it later.
                             .role(exigence.getRole())
                             .organisationId(ctx.organisationId())
+                            // V47 : auto-affectation = brouillon, publie via action explicite
+                            .publie(false)
                             .build();
 
                     tousLesCreneaux.add(nouveau);

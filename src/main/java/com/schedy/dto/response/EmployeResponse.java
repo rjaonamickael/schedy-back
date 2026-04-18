@@ -26,7 +26,9 @@ public record EmployeResponse(
         List<String> siteIds,
         String systemRole,
         boolean hasUserAccount,
-        boolean invitationPending
+        boolean invitationPending,
+        java.time.OffsetDateTime pinGeneratedAt,
+        Integer pinVersion
 ) {
     /**
      * Build an EmployeResponse with linked User data.
@@ -48,7 +50,9 @@ public record EmployeResponse(
                 e.getSiteIds(),
                 linkedUser != null ? linkedUser.getRole().name() : null,
                 linkedUser != null,
-                pending
+                pending,
+                e.getPinGeneratedAt(),
+                e.getPinVersion()
         );
     }
 

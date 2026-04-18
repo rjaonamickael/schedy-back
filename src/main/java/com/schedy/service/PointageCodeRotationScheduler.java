@@ -4,6 +4,7 @@ import com.schedy.entity.PointageCode;
 import com.schedy.repository.PointageCodeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import java.time.OffsetDateTime;
@@ -49,6 +50,7 @@ public class PointageCodeRotationScheduler {
     private final PointageCodeService service;
 
     @Scheduled(fixedDelay = 60_000) // every 60 seconds
+    @SchedulerLock(name = "pointageCode_rotation", lockAtLeastFor = "30s", lockAtMostFor = "5m")
     public void rotateExpiredCodes() {
         // Read in Spring Data JPA's auto-wrapped read-only tx (no outer @Transactional here !!).
         List<PointageCode> expired = repository.findByActifTrueAndValidToBefore(

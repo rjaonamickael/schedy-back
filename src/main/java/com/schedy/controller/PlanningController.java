@@ -19,6 +19,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/creneaux")
@@ -122,5 +123,35 @@ public class PlanningController {
             planningService.deleteBySemaine(semaine);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * V47 : publie tous les créneaux brouillons d'une semaine (action explicite
+     * admin/manager). Si siteId est fourni, limite au site concerné.
+     *
+     * <p>Réponse : {@code { "publie": <count> }}.
+     */
+    @PostMapping("/publier")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<Map<String, Integer>> publier(
+            @RequestParam @Pattern(regexp = "\\d{4}-W\\d{1,2}", message = "Format de semaine invalide, attendu: YYYY-Wnn") String semaine,
+            @RequestParam(value = "siteId", required = false) String siteId) {
+        int count = planningService.publier(semaine, siteId);
+        return ResponseEntity.ok(Map.of("publie", count));
+    }
+
+    /**
+     * V47 : supprime tous les créneaux brouillons d'une semaine. Utilisé par
+     * l'action "Annuler le brouillon".
+     *
+     * <p>Réponse : {@code { "supprime": <count> }}.
+     */
+    @DeleteMapping("/brouillon")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<Map<String, Integer>> annulerBrouillon(
+            @RequestParam @Pattern(regexp = "\\d{4}-W\\d{1,2}", message = "Format de semaine invalide, attendu: YYYY-Wnn") String semaine,
+            @RequestParam(value = "siteId", required = false) String siteId) {
+        int count = planningService.supprimerBrouillons(semaine, siteId);
+        return ResponseEntity.ok(Map.of("supprime", count));
     }
 }

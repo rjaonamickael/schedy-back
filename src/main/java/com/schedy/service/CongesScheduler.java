@@ -10,6 +10,7 @@ import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.TypeCongeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,7 @@ public class CongesScheduler {
      * Split into a single scheduler to avoid two jobs competing on the same banques.
      */
     @Scheduled(cron = "0 0 2 * * ?")
+    @SchedulerLock(name = "congesScheduler_dailyJob", lockAtLeastFor = "5m", lockAtMostFor = "30m")
     public void runDailyCongesJob() {
         LocalDate today = LocalDate.now();
         log.info("CongesScheduler starting for {}", today);
