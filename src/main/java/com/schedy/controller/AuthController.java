@@ -84,14 +84,16 @@ public class AuthController {
      * Clients MUST check the {@code requires2fa} flag before proceeding to the dashboard.
      */
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request) {
-        AuthResult result = authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request,
+                                              HttpServletRequest httpReq) {
+        AuthResult result = authService.login(request, httpReq);
         return buildAuthResponse(result, HttpStatus.OK);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        AuthResult result = authService.register(request);
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request,
+                                                 HttpServletRequest httpReq) {
+        AuthResult result = authService.register(request, httpReq);
         return buildAuthResponse(result, HttpStatus.CREATED);
     }
 
@@ -113,7 +115,7 @@ public class AuthController {
             @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshToken,
             HttpServletRequest request) {
         enforceAllowedOrigin(request);
-        AuthResult result = authService.refresh(refreshToken);
+        AuthResult result = authService.refresh(refreshToken, request);
         return buildAuthResponse(result, HttpStatus.OK);
     }
 
@@ -186,7 +188,8 @@ public class AuthController {
      * On success the refresh JWT is issued as an HttpOnly cookie (same contract as /login).
      */
     @PostMapping("/2fa/verify")
-    public ResponseEntity<AuthResponse> verify2fa(@RequestBody Map<String, String> body) {
+    public ResponseEntity<AuthResponse> verify2fa(@RequestBody Map<String, String> body,
+                                                  HttpServletRequest httpReq) {
         String pendingToken = extractRequired(body, "pendingToken");
         String code         = extractRequired(body, "code");
 
@@ -197,12 +200,12 @@ public class AuthController {
         // email code so it cannot be reused as a separate auth path.
         if (totpService.verify(email, code)) {
             authService.clearEmail2faCode(email);
-            return buildAuthResponse(authService.completeLogin(email), HttpStatus.OK);
+            return buildAuthResponse(authService.completeLogin(email, httpReq), HttpStatus.OK);
         }
         // Fall back to email code verification (email code is cleared on success
         // inside verifyEmail2faCode itself).
         if (authService.verifyEmail2faCode(email, code)) {
-            return buildAuthResponse(authService.completeLogin(email), HttpStatus.OK);
+            return buildAuthResponse(authService.completeLogin(email, httpReq), HttpStatus.OK);
         }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
             "Code invalide ou expir\u00e9.");
@@ -225,7 +228,8 @@ public class AuthController {
      * Does NOT require a Bearer token.
      */
     @PostMapping("/2fa/recovery")
-    public ResponseEntity<AuthResponse> useRecoveryCode(@RequestBody Map<String, String> body) {
+    public ResponseEntity<AuthResponse> useRecoveryCode(@RequestBody Map<String, String> body,
+                                                        HttpServletRequest httpReq) {
         String pendingToken = extractRequired(body, "pendingToken");
         String code         = extractRequired(body, "code");
 
@@ -237,7 +241,7 @@ public class AuthController {
                 "Code de récupération invalide ou déjà utilisé.");
         }
 
-        return buildAuthResponse(authService.completeLogin(email), HttpStatus.OK);
+        return buildAuthResponse(authService.completeLogin(email, httpReq), HttpStatus.OK);
     }
 
     // ─────────────────────────────────────────────────────────────────

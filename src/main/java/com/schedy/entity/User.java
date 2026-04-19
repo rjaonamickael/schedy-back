@@ -37,6 +37,14 @@ public class User {
 
     private String organisationId;
 
+    /**
+     * @deprecated V50 — replaced by the {@code user_session} table which supports
+     * multiple concurrent devices per account. Left in place (NULL) for rollback
+     * safety during the post-V50 stabilisation window; the column will be dropped
+     * in a later Flyway migration once the multi-session path is confirmed stable.
+     * Do not read or write this field from new code.
+     */
+    @Deprecated
     private String refreshToken;
 
     @Column(name = "invitation_token", length = 64)
@@ -80,6 +88,17 @@ public class User {
 
     @Column(name = "password_reset_token_expires_at")
     private Instant passwordResetTokenExpiresAt;
+
+    // Added by V49 migration — personal profile : photo + LinkedIn perso.
+    // photo_url est l'URL publique R2 produite par /api/v1/user/profile/photo
+    // (raster JPG/PNG/WEBP). linkedin_url est le profil LinkedIn personnel.
+    // Ces 2 champs sont snapshotes dans Testimonial au submit (author_photo_url
+    // et linkedin_url de Testimonial).
+    @Column(name = "photo_url", length = 500)
+    private String photoUrl;
+
+    @Column(name = "linkedin_url", length = 500)
+    private String linkedinUrl;
 
     public enum UserRole {
         SUPERADMIN, ADMIN, MANAGER, EMPLOYEE

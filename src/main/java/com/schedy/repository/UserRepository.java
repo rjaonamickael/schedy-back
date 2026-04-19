@@ -14,7 +14,9 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
     boolean existsByEmail(String email);
-    Optional<User> findByRefreshToken(String refreshToken);
+    // V50 — the single-slot refreshToken column is replaced by the user_session
+    // table. findByRefreshToken was removed because no caller needs it anymore;
+    // the column itself stays around (NULL) until a follow-up migration drops it.
     Optional<User> findByEmployeId(String employeId);
     List<User> findAllByOrganisationId(String organisationId);
     List<User> findByOrganisationIdAndRole(String organisationId, User.UserRole role);
@@ -27,4 +29,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPasswordResetToken(String passwordResetToken);
     @Modifying @Transactional
     void deleteByOrganisationId(String organisationId);
+
+    /** V49 — R2 GC guard : vrai si la photo est encore liee a un utilisateur. */
+    boolean existsByPhotoUrl(String photoUrl);
 }

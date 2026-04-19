@@ -12,6 +12,7 @@ import com.schedy.service.AuthResult;
 import com.schedy.service.AuthService;
 import com.schedy.service.TotpService;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,7 +93,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /login returns 200 with body + refreshToken HttpOnly cookie")
     void login_returns200WithCookieOnHappyPath() throws Exception {
-        when(authService.login(any(AuthRequest.class))).thenReturn(authenticatedResult());
+        when(authService.login(any(AuthRequest.class), any(HttpServletRequest.class))).thenReturn(authenticatedResult());
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,7 +115,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /login returns 200 with 2FA challenge and NO cookie when 2FA is enabled")
     void login_returns200WithPendingTokenAndNoCookieWhen2faEnabled() throws Exception {
-        when(authService.login(any(AuthRequest.class)))
+        when(authService.login(any(AuthRequest.class), any(HttpServletRequest.class)))
                 .thenReturn(AuthResult.bodyOnly(AuthResponse.pending2fa("pending-tok", 300)));
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -131,7 +133,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /login returns 401 when service throws unauthorized ResponseStatusException")
     void login_returns401OnInvalidCredentials() throws Exception {
-        when(authService.login(any(AuthRequest.class)))
+        when(authService.login(any(AuthRequest.class), any(HttpServletRequest.class)))
                 .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email ou mot de passe incorrect"));
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -154,7 +156,7 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details.email").exists());
 
-        verify(authService, never()).login(any());
+        verify(authService, never()).login(any(), any());
     }
 
     // ── POST /register ────────────────────────────────────────────────────
@@ -162,7 +164,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /register returns 201 Created on valid payload with refresh cookie")
     void register_returns201WithCookie() throws Exception {
-        when(authService.register(any(RegisterRequest.class))).thenReturn(authenticatedResult());
+        when(authService.register(any(RegisterRequest.class), any(HttpServletRequest.class))).thenReturn(authenticatedResult());
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -177,7 +179,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /register returns 409 Conflict when email already exists")
     void register_returns409WhenEmailExists() throws Exception {
-        when(authService.register(any(RegisterRequest.class)))
+        when(authService.register(any(RegisterRequest.class), any(HttpServletRequest.class)))
                 .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT,
                         "Un utilisateur avec cet email existe deja"));
 
@@ -202,7 +204,7 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details.password").exists());
 
-        verify(authService, never()).register(any());
+        verify(authService, never()).register(any(), any());
     }
 
     // ── POST /refresh (SEC-20 cookie-based) ─────────────────────────────
@@ -212,7 +214,7 @@ class AuthControllerTest {
     void refresh_returns200WithRotatedCookie() throws Exception {
         String newRawRefresh = "new-raw-refresh-xyz";
         AuthResult rotated = AuthResult.withRefresh(authenticatedResponse(), newRawRefresh);
-        when(authService.refresh(RAW_REFRESH)).thenReturn(rotated);
+        when(authService.refresh(eq(RAW_REFRESH), any(HttpServletRequest.class))).thenReturn(rotated);
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie("refreshToken", RAW_REFRESH)))
@@ -227,7 +229,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /refresh returns 401 when no refreshToken cookie is present")
     void refresh_returns401WhenCookieMissing() throws Exception {
-        when(authService.refresh(null))
+        when(authService.refresh(isNull(), any(HttpServletRequest.class)))
                 .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expiree : refresh token manquant"));
 
         mockMvc.perform(post("/api/v1/auth/refresh"))
@@ -238,7 +240,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /refresh returns 401 when cookie is present but invalid")
     void refresh_returns401WhenCookieInvalid() throws Exception {
-        when(authService.refresh("bad"))
+        when(authService.refresh(eq("bad"), any(HttpServletRequest.class)))
                 .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token invalide ou expire"));
 
         mockMvc.perform(post("/api/v1/auth/refresh")
@@ -348,7 +350,7 @@ class AuthControllerTest {
         when(jwtUtil.is2faPendingToken("pending-tok")).thenReturn(true);
         when(jwtUtil.extractEmail("pending-tok")).thenReturn("alice@example.com");
         when(totpService.verify("alice@example.com", "123456")).thenReturn(true);
-        when(authService.completeLogin("alice@example.com")).thenReturn(authenticatedResult());
+        when(authService.completeLogin(eq("alice@example.com"), any(HttpServletRequest.class))).thenReturn(authenticatedResult());
 
         mockMvc.perform(post("/api/v1/auth/2fa/verify")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -372,7 +374,7 @@ class AuthControllerTest {
                                 Map.of("pendingToken", "bad-tok", "code", "123456"))))
                 .andExpect(status().isUnauthorized());
 
-        verify(authService, never()).completeLogin(anyString());
+        verify(authService, never()).completeLogin(anyString(), any());
     }
 
     @Test
@@ -412,14 +414,14 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error").value(containsString("Origin non autorisée")));
 
         // Service must never be reached on Origin rejection
-        verify(authService, never()).refresh(anyString());
+        verify(authService, never()).refresh(anyString(), any());
     }
 
     @Test
     @DisplayName("POST /refresh accepts an allowed Origin (cors.allowed-origins)")
     void refresh_acceptsAllowedOrigin() throws Exception {
         AuthResult rotated = AuthResult.withRefresh(authenticatedResponse(), "rotated-token");
-        when(authService.refresh(RAW_REFRESH)).thenReturn(rotated);
+        when(authService.refresh(eq(RAW_REFRESH), any(HttpServletRequest.class))).thenReturn(rotated);
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie("refreshToken", RAW_REFRESH))
@@ -431,7 +433,7 @@ class AuthControllerTest {
     @DisplayName("POST /refresh tolerates a missing Origin header (non-browser client)")
     void refresh_tolerateMissingOrigin() throws Exception {
         AuthResult rotated = AuthResult.withRefresh(authenticatedResponse(), "rotated-token");
-        when(authService.refresh(RAW_REFRESH)).thenReturn(rotated);
+        when(authService.refresh(eq(RAW_REFRESH), any(HttpServletRequest.class))).thenReturn(rotated);
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie("refreshToken", RAW_REFRESH)))
@@ -454,7 +456,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("SEC-20 guard : login response body must not contain 'refreshToken' at all")
     void sec20_login_bodyMustNotContainRefreshTokenField() throws Exception {
-        when(authService.login(any(AuthRequest.class))).thenReturn(authenticatedResult());
+        when(authService.login(any(AuthRequest.class), any(HttpServletRequest.class))).thenReturn(authenticatedResult());
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

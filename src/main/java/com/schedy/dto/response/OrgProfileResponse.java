@@ -4,8 +4,12 @@ import com.schedy.entity.Organisation;
 
 /**
  * Admin self-service projection of the organisation. Intentionally omits
- * superadmin-only fields (verificationStatus, status, notes, verifiedBy,
- * verifiedAt, verificationNote) and the Stripe customer id.
+ * superadmin-only fields (status, notes, verifiedBy, verifiedAt,
+ * verificationNote) and the Stripe customer id.
+ *
+ * <p>V48 : ajout des champs brand (logoUrl, websiteUrl, linkedinUrl) pour
+ * alimenter le nouvel onglet "Organisation" du profil admin et permettre
+ * le snapshot au submit temoignage.
  */
 public record OrgProfileResponse(
         String id,
@@ -23,7 +27,15 @@ public record OrgProfileResponse(
         String contactEmail,
         String siret,
         String status,
-        String verificationStatus
+        String verificationStatus,
+        // V48 — brand / social presence
+        String logoUrl,
+        String websiteUrl,
+        String linkedinUrl,
+        // V50 — restauration Facebook / Instagram / X entreprise
+        String facebookUrl,
+        String instagramUrl,
+        String twitterUrl
 ) {
     public static OrgProfileResponse from(Organisation o) {
         return new OrgProfileResponse(
@@ -42,7 +54,13 @@ public record OrgProfileResponse(
                 o.getContactEmail(),
                 o.getSiret(),
                 o.getStatus(),
-                o.getVerificationStatus()
+                o.getVerificationStatus(),
+                o.getLogoUrl(),
+                o.getWebsiteUrl(),
+                o.getLinkedinUrl(),
+                o.getFacebookUrl(),
+                o.getInstagramUrl(),
+                o.getTwitterUrl()
         );
     }
 }

@@ -3,12 +3,15 @@ package com.schedy.service;
 import com.schedy.config.TenantContext;
 import com.schedy.dto.request.TestimonialDto;
 import com.schedy.dto.response.TestimonialResponse;
+import com.schedy.entity.Organisation;
 import com.schedy.entity.Subscription;
 import com.schedy.entity.Testimonial;
 import com.schedy.entity.Testimonial.TestimonialStatus;
+import com.schedy.entity.User;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.SubscriptionRepository;
 import com.schedy.repository.TestimonialRepository;
+import com.schedy.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -40,6 +43,7 @@ public class TestimonialService {
     private final TestimonialRepository  testimonialRepository;
     private final OrganisationRepository organisationRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final UserRepository         userRepository;
     private final TenantContext          tenantContext;
     private final R2StorageService       r2StorageService;
 
@@ -72,9 +76,12 @@ public class TestimonialService {
                 + "Veuillez attendre la réponse avant d'en soumettre un nouveau.");
         }
 
-        String orgName = organisationRepository.findById(orgId)
-                .map(o -> o.getNom())
-                .orElse(null);
+        // V48 snapshot — charge Organisation + User pour copier logo/socials/photo
+        // au moment du submit. Le DTO ne porte plus ces champs.
+        Organisation org = organisationRepository.findById(orgId).orElse(null);
+        String orgName = org != null ? org.getNom() : null;
+
+        User author = userRepository.findByEmail(currentUserEmail()).orElse(null);
 
         // V44 — stamp the org's current plan tier on the testimonial row so
         // the card badge survives later plan changes. Null when the org has
@@ -83,14 +90,6 @@ public class TestimonialService {
                 .findByOrganisationId(orgId)
                 .map(Subscription::getPlanTier)
                 .orElse(null);
-
-        // Security: a client cannot point logoUrl at an arbitrary host. The URL
-        // must come from our own R2 upload endpoint (see R2StorageService#isOwnedUrl).
-        String logoUrl = dto.logoUrl();
-        if (logoUrl != null && !logoUrl.isBlank() && !r2StorageService.isOwnedUrl(logoUrl)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "L'URL du logo n'est pas valide. Téléversez le logo via le formulaire.");
-        }
 
         Testimonial entity = Testimonial.builder()
                 .organisationId(orgId)
@@ -101,15 +100,20 @@ public class TestimonialService {
                 .quoteTitle(nullIfBlank(dto.quoteTitle()))
                 .stars(dto.stars())
                 .language(dto.language())
-                .linkedinUrl(nullIfBlank(dto.linkedinUrl()))
-                .websiteUrl(nullIfBlank(dto.websiteUrl()))
-                .logoUrl(nullIfBlank(logoUrl))
+                // V48 snapshot : Organisation.* copies au submit.
+                .logoUrl(org != null ? org.getLogoUrl() : null)
+                .websiteUrl(org != null ? org.getWebsiteUrl() : null)
+                .organisationLinkedinUrl(org != null ? org.getLinkedinUrl() : null)
+                // V50 snapshot : FB/IG/X entreprise.
+                .facebookUrl(org != null ? org.getFacebookUrl() : null)
+                .instagramUrl(org != null ? org.getInstagramUrl() : null)
+                .twitterUrl(org != null ? org.getTwitterUrl() : null)
+                // V49 snapshot : User.* copies au submit (LinkedIn perso + photo).
+                .linkedinUrl(author != null ? author.getLinkedinUrl() : null)
+                .authorPhotoUrl(author != null ? author.getPhotoUrl() : null)
                 .textProbleme(nullIfBlank(dto.textProbleme()))
                 .textSolution(nullIfBlank(dto.textSolution()))
                 .textImpact(nullIfBlank(dto.textImpact()))
-                .facebookUrl(nullIfBlank(dto.facebookUrl()))
-                .instagramUrl(nullIfBlank(dto.instagramUrl()))
-                .twitterUrl(nullIfBlank(dto.twitterUrl()))
                 .planTier(planTier)
                 .status(TestimonialStatus.PENDING)
                 .displayOrder(0)
@@ -117,8 +121,12 @@ public class TestimonialService {
 
         entity = testimonialRepository.save(entity);
 
-        log.info("Testimonial submitted by org '{}' ({}): authorName='{}' logoUrl={}",
-                orgId, orgName, dto.authorName(), logoUrl != null);
+        log.info("Testimonial submitted by org '{}' ({}): authorName='{}', snapshots: logo={}, orgLinkedin={}, authorLinkedin={}, authorPhoto={}",
+                orgId, orgName, dto.authorName(),
+                entity.getLogoUrl() != null,
+                entity.getOrganisationLinkedinUrl() != null,
+                entity.getLinkedinUrl() != null,
+                entity.getAuthorPhotoUrl() != null);
 
         return TestimonialResponse.from(entity, orgName);
     }
@@ -178,11 +186,11 @@ public class TestimonialService {
                 "Témoignage introuvable : " + id);
         }
 
-        String logoUrl = dto.logoUrl();
-        if (logoUrl != null && !logoUrl.isBlank() && !r2StorageService.isOwnedUrl(logoUrl)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "L'URL du logo n'est pas valide. Téléversez le logo via le formulaire.");
-        }
+        // V48 — re-snapshot logo/socials/photo sur edit pour refleter l'etat
+        // courant de l'Organisation et de l'utilisateur, coherent avec la
+        // semantique "le retour a PENDING = re-moderation de contenu frais".
+        Organisation org = organisationRepository.findById(orgId).orElse(null);
+        User author = userRepository.findByEmail(currentUserEmail()).orElse(null);
 
         entity.setAuthorName(trimmed(dto.authorName()));
         entity.setAuthorRole(trimmed(dto.authorRole()));
@@ -191,15 +199,18 @@ public class TestimonialService {
         entity.setQuoteTitle(nullIfBlank(dto.quoteTitle()));
         entity.setStars(dto.stars());
         entity.setLanguage(dto.language());
-        entity.setLinkedinUrl(nullIfBlank(dto.linkedinUrl()));
-        entity.setWebsiteUrl(nullIfBlank(dto.websiteUrl()));
-        entity.setLogoUrl(nullIfBlank(logoUrl));
+        entity.setLogoUrl(org != null ? org.getLogoUrl() : null);
+        entity.setWebsiteUrl(org != null ? org.getWebsiteUrl() : null);
+        entity.setOrganisationLinkedinUrl(org != null ? org.getLinkedinUrl() : null);
+        // V50 — re-snapshot FB/IG/X entreprise sur edit.
+        entity.setFacebookUrl(org != null ? org.getFacebookUrl() : null);
+        entity.setInstagramUrl(org != null ? org.getInstagramUrl() : null);
+        entity.setTwitterUrl(org != null ? org.getTwitterUrl() : null);
+        entity.setLinkedinUrl(author != null ? author.getLinkedinUrl() : null);
+        entity.setAuthorPhotoUrl(author != null ? author.getPhotoUrl() : null);
         entity.setTextProbleme(nullIfBlank(dto.textProbleme()));
         entity.setTextSolution(nullIfBlank(dto.textSolution()));
         entity.setTextImpact(nullIfBlank(dto.textImpact()));
-        entity.setFacebookUrl(nullIfBlank(dto.facebookUrl()));
-        entity.setInstagramUrl(nullIfBlank(dto.instagramUrl()));
-        entity.setTwitterUrl(nullIfBlank(dto.twitterUrl()));
 
         // Editing always kicks the row back to PENDING for re-moderation,
         // regardless of its previous status. Clear the review metadata so
@@ -247,13 +258,22 @@ public class TestimonialService {
                 "Témoignage introuvable : " + id);
         }
 
+        // V48 — le logo est snapshot : il peut encore etre la valeur courante
+        // de Organisation.logoUrl. Ne pas supprimer le blob s'il y reste
+        // reference. Meme logique pour author_photo_url vs User.photoUrl.
         String logoUrl = entity.getLogoUrl();
+        String authorPhotoUrl = entity.getAuthorPhotoUrl();
         testimonialRepository.delete(entity);
 
-        // Best-effort R2 cleanup — errors are logged inside deleteLogo(),
-        // never rethrown, so the DB delete commit is authoritative.
-        if (logoUrl != null && !logoUrl.isBlank()) {
-            r2StorageService.deleteLogo(logoUrl);
+        if (logoUrl != null && !logoUrl.isBlank()
+                && !testimonialRepository.existsByLogoUrl(logoUrl)
+                && !organisationRepository.existsByLogoUrl(logoUrl)) {
+            r2StorageService.deleteBlob(logoUrl);
+        }
+        if (authorPhotoUrl != null && !authorPhotoUrl.isBlank()
+                && !testimonialRepository.existsByAuthorPhotoUrl(authorPhotoUrl)
+                && !userRepository.existsByPhotoUrl(authorPhotoUrl)) {
+            r2StorageService.deleteBlob(authorPhotoUrl);
         }
 
         log.info("Testimonial {} deleted by org '{}' (status was {})",

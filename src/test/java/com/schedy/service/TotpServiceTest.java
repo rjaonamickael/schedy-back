@@ -3,6 +3,7 @@ package com.schedy.service;
 import com.schedy.entity.User;
 import com.schedy.repository.TotpRecoveryCodeRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.repository.UserSessionRepository;
 import com.schedy.util.TotpEncryptionUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.*;
 class TotpServiceTest {
 
     @Mock private UserRepository userRepository;
+    @Mock private UserSessionRepository sessionRepository;
     @Mock private TotpRecoveryCodeRepository recoveryCodeRepository;
     @Mock private TotpEncryptionUtil encryptionUtil;
 

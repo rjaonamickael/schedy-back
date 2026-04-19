@@ -49,34 +49,58 @@ public class Testimonial {
     @Column(name = "quote_title", length = 200)
     private String quoteTitle;
 
-    // ── V41 : rich testimonial fields ──────────────────────────────
+    // ── V41 : rich testimonial fields (updated V48) ────────────────
 
-    /** LinkedIn profile URL of the author. Validated client + server side. */
+    /**
+     * LinkedIn PERSONAL profile URL of the author.
+     * V48 : snapshot copie depuis {@code User.linkedinUrl} au submit — le client
+     * ne le fournit plus dans le DTO. Se distingue de {@link Organisation#getLinkedinUrl()}
+     * qui porte le LinkedIn entreprise (affiche dans le header de la carte).
+     */
     @Column(name = "linkedin_url", length = 500)
     private String linkedinUrl;
 
-    /** Public website of the author's organisation. */
+    /**
+     * Website of the author's organisation.
+     * V48 : snapshot copie depuis {@code Organisation.websiteUrl} au submit.
+     */
     @Column(name = "website_url", length = 500)
     private String websiteUrl;
 
-    /** Facebook page / profile URL. */
-    @Column(name = "facebook_url", length = 500)
-    private String facebookUrl;
-
-    /** Instagram profile URL. */
-    @Column(name = "instagram_url", length = 500)
-    private String instagramUrl;
-
-    /** X (Twitter) profile URL. Column kept {@code twitter_url} for migration friendliness. */
-    @Column(name = "twitter_url", length = 500)
-    private String twitterUrl;
-
     /**
      * Public HTTPS URL of the sanitized logo stored on Cloudflare R2.
-     * Computed server-side during upload — the client never sets this directly.
+     * V48 : snapshot copie depuis {@code Organisation.logoUrl} au submit.
      */
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
+
+    /**
+     * V48 : snapshot de la photo personnelle de l'auteur, copie depuis
+     * {@code User.photoUrl} au submit. URL R2 publique (JPG/PNG/WEBP).
+     */
+    @Column(name = "author_photo_url", length = 500)
+    private String authorPhotoUrl;
+
+    /**
+     * V48 : snapshot du LinkedIn entreprise, copie depuis
+     * {@code Organisation.linkedinUrl} au submit. Distinct de
+     * {@link #linkedinUrl} qui porte le LinkedIn perso de l'auteur.
+     * Affichage : header de la carte (contexte entreprise).
+     */
+    @Column(name = "organisation_linkedin_url", length = 500)
+    private String organisationLinkedinUrl;
+
+    /** V51 : snapshot Facebook entreprise (depuis Organisation.facebookUrl). */
+    @Column(name = "facebook_url", length = 500)
+    private String facebookUrl;
+
+    /** V51 : snapshot Instagram entreprise (depuis Organisation.instagramUrl). */
+    @Column(name = "instagram_url", length = 500)
+    private String instagramUrl;
+
+    /** V51 : snapshot X/Twitter entreprise (depuis Organisation.twitterUrl). */
+    @Column(name = "twitter_url", length = 500)
+    private String twitterUrl;
 
     /** Optional: "problem faced" bullet in the structured testimonial template. */
     @Column(name = "text_probleme", columnDefinition = "TEXT")

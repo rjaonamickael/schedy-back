@@ -85,25 +85,22 @@ public class TestimonialController {
     }
 
     /**
-     * POST /api/v1/testimonials/logo (multipart/form-data)
-     * Upload a logo for the testimonial in progress. The file MUST be a
-     * valid SVG — the content is sanitized by {@link com.schedy.util.SvgSanitizer}
-     * before it's written to R2. The response body contains a single
-     * {@code url} property that the frontend passes back in the main
-     * {@code TestimonialDto.logoUrl} field on submit.
+     * POST /api/v1/testimonials/logo (multipart/form-data) — <b>DEPRECATED V48</b>.
      *
-     * <p>Returns {@link CompletableFuture} so Spring MVC releases the
-     * servlet worker thread while R2 acknowledges the PUT. Validation and
-     * SVG sanitization happen synchronously before the future is returned
-     * — any {@link com.schedy.exception.BusinessRuleException} surfaces
-     * as a regular 422 without ever touching the async path.
+     * <p>Legacy endpoint conserve pour retro-compat court terme. Les nouveaux
+     * clients doivent utiliser {@code POST /api/v1/organisation/me/logo} (le
+     * logo est maintenant porte par l'Organisation et snapshote au submit).
+     * Ajoute le header {@code Deprecation: true} pour signaler aux clients.
      */
+    @Deprecated(forRemoval = true)
     @PostMapping(value = "/logo", consumes = "multipart/form-data")
     public CompletableFuture<ResponseEntity<Map<String, String>>> uploadLogo(
             @RequestParam("file") MultipartFile file) {
         return r2StorageService.uploadTestimonialLogoAsync(file)
                 .thenApply(publicUrl -> ResponseEntity
                         .status(HttpStatus.CREATED)
+                        .header("Deprecation", "true")
+                        .header("Link", "</api/v1/organisation/me/logo>; rel=\"successor-version\"")
                         .body(Map.of("url", publicUrl)));
     }
 }

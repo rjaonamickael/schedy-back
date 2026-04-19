@@ -7,6 +7,7 @@ import com.schedy.entity.Organisation;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.OrganisationRepository;
+import com.schedy.repository.TestimonialRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,8 @@ public class OrgProfileService {
 
     private final OrganisationRepository organisationRepository;
     private final TenantContext tenantContext;
+    private final TestimonialRepository testimonialRepository;
+    private final R2StorageService r2StorageService;
 
     @Transactional(readOnly = true)
     public OrgProfileResponse getCurrentOrgProfile() {
@@ -61,10 +64,57 @@ public class OrgProfileService {
         if (request.legalRepresentative() != null) org.setLegalRepresentative(emptyToNull(request.legalRepresentative()));
         if (request.contactEmail() != null) org.setContactEmail(emptyToNull(request.contactEmail()));
         if (request.siret() != null) org.setSiret(emptyToNull(request.siret()));
+        // V48 — brand / social presence (logo URL n'est PAS ici : endpoint multipart dedie).
+        if (request.websiteUrl() != null) org.setWebsiteUrl(emptyToNull(request.websiteUrl()));
+        if (request.linkedinUrl() != null) org.setLinkedinUrl(emptyToNull(request.linkedinUrl()));
+        // V50 — restauration FB/IG/X entreprise.
+        if (request.facebookUrl() != null) org.setFacebookUrl(emptyToNull(request.facebookUrl()));
+        if (request.instagramUrl() != null) org.setInstagramUrl(emptyToNull(request.instagramUrl()));
+        if (request.twitterUrl() != null) org.setTwitterUrl(emptyToNull(request.twitterUrl()));
 
         Organisation saved = organisationRepository.save(org);
         log.info("Org profile updated org={}", orgId);
         return OrgProfileResponse.from(saved);
+    }
+
+    /**
+     * V48 — persiste l'URL du logo fraichement uploade sur R2.
+     * Cleanup best-effort de l'ancien blob si aucun temoignage ne le reference.
+     */
+    @Transactional
+    public void setLogoUrl(String orgId, String newLogoUrl) {
+        Organisation org = organisationRepository.findById(orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Organisation introuvable: " + orgId));
+        String oldLogoUrl = org.getLogoUrl();
+        org.setLogoUrl(newLogoUrl);
+        organisationRepository.save(org);
+        log.info("Org logo updated org={} newUrl={}", orgId, newLogoUrl);
+
+        if (oldLogoUrl != null && !oldLogoUrl.isBlank() && !oldLogoUrl.equals(newLogoUrl)) {
+            // Verifier qu'aucun temoignage snapshote n'utilise cette ancienne URL.
+            if (!testimonialRepository.existsByLogoUrl(oldLogoUrl)) {
+                r2StorageService.deleteBlob(oldLogoUrl);
+            } else {
+                log.info("Old logo url retained on R2 — still snapshot-referenced by one or more testimonials");
+            }
+        }
+    }
+
+    /** V48 — clear logo : nullify + cleanup R2 best-effort. */
+    @Transactional
+    public void clearLogo() {
+        String orgId = tenantContext.requireOrganisationId();
+        Organisation org = organisationRepository.findById(orgId)
+                .orElseThrow(() -> new ResourceNotFoundException("Organisation introuvable: " + orgId));
+        String oldLogoUrl = org.getLogoUrl();
+        if (oldLogoUrl == null || oldLogoUrl.isBlank()) return;
+        org.setLogoUrl(null);
+        organisationRepository.save(org);
+        log.info("Org logo cleared org={}", orgId);
+
+        if (!testimonialRepository.existsByLogoUrl(oldLogoUrl)) {
+            r2StorageService.deleteBlob(oldLogoUrl);
+        }
     }
 
     private String emptyToNull(String value) {

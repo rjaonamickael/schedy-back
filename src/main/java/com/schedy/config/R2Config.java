@@ -55,6 +55,13 @@ public class R2Config {
     @Value("${schedy.prefixes.logos:assets/logos-org}")           private String logoPrefix;
 
     /**
+     * V49 — prefix pour les photos personnelles d'utilisateurs (raster
+     * JPG/PNG/WEBP). En dev : {@code dev/assets/photos-user}, en prod :
+     * {@code assets/photos-user}.
+     */
+    @Value("${schedy.prefixes.photos:assets/photos-user}")        private String photoPrefix;
+
+    /**
      * Returns true when all mandatory R2 settings are present. Consumed by the
      * upload service to short-circuit uploads with a clear 503 in dev if the
      * admin has not configured R2 yet.
@@ -83,7 +90,16 @@ public class R2Config {
      * Callers append {@code "/"} + their filename.
      */
     public String getLogoPrefix() {
-        String p = logoPrefix == null ? "" : logoPrefix.trim();
+        return normalizePrefix(logoPrefix);
+    }
+
+    /** V49 — photos perso utilisateurs. Memes conventions que logo prefix. */
+    public String getPhotoPrefix() {
+        return normalizePrefix(photoPrefix);
+    }
+
+    private static String normalizePrefix(String raw) {
+        String p = raw == null ? "" : raw.trim();
         if (p.startsWith("/")) p = p.substring(1);
         if (p.endsWith("/"))   p = p.substring(0, p.length() - 1);
         return p;

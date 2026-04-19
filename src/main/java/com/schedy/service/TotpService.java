@@ -4,6 +4,7 @@ import com.schedy.entity.TotpRecoveryCode;
 import com.schedy.entity.User;
 import com.schedy.repository.TotpRecoveryCodeRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.repository.UserSessionRepository;
 import com.schedy.util.CryptoUtil;
 import com.schedy.util.TotpEncryptionUtil;
 import dev.samstevens.totp.code.*;
@@ -54,6 +55,7 @@ public class TotpService {
     private static final long   LOCKOUT_DURATION_MS   = 15 * 60 * 1000L;
 
     private final UserRepository                userRepository;
+    private final UserSessionRepository         sessionRepository;
     private final TotpRecoveryCodeRepository    recoveryCodeRepository;
     private final TotpEncryptionUtil            encryptionUtil;
 
@@ -146,11 +148,11 @@ public class TotpService {
                 "Code TOTP invalide. Vérifiez l'heure de votre appareil et réessayez.");
         }
 
-        // Enable 2FA and invalidate existing refresh token (force re-auth with 2FA)
+        // Enable 2FA and invalidate every active session (force re-auth with 2FA on every device).
         user.setTotpEnabled(true);
         user.setTotpLastUsedOtp(code); // mark first code as used (replay prevention)
-        user.setRefreshToken(null);
         userRepository.save(user);
+        sessionRepository.deleteByUserId(user.getId());
 
         // Generate and store recovery codes
         List<String> plainCodes = generateRecoveryCodes(user.getId());
@@ -350,8 +352,9 @@ public class TotpService {
         user.setTotpEnabled(false);
         user.setTotpSecretEncrypted(null);
         user.setTotpLastUsedOtp(null);
-        user.setRefreshToken(null); // force re-auth after 2FA state change
         userRepository.save(user);
+        // V50 — force re-auth on every active device after 2FA state change.
+        sessionRepository.deleteByUserId(user.getId());
     }
 
     private User currentUser() {

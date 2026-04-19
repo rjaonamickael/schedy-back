@@ -22,4 +22,7 @@ public interface OrganisationRepository extends JpaRepository<Organisation, Stri
 
     /** Used by the Stripe webhook handler to map a Stripe customer back to an org. */
     Optional<Organisation> findByStripeCustomerId(String stripeCustomerId);
+
+    /** V48 — R2 GC guard : vrai si le logo est encore la valeur courante d'une orga. */
+    boolean existsByLogoUrl(String logoUrl);
 }

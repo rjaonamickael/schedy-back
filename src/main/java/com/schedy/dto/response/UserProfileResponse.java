@@ -9,5 +9,10 @@ public record UserProfileResponse(
     String employeId,
     /** Current subscription tier of the user's org — drives client-side features like
         the testimonial preview plan badge. Null when the org has no subscription row. */
-    String planTier
+    String planTier,
+    // V49 — personal profile. photoUrl est l'URL R2 retournee par
+    // POST /api/v1/user/profile/photo. linkedinUrl est le profil perso
+    // (distinct du LinkedIn entreprise porte par Organisation).
+    String photoUrl,
+    String linkedinUrl
 ) {}

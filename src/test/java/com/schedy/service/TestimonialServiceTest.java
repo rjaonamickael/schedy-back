@@ -46,6 +46,7 @@ class TestimonialServiceTest {
     @Mock private TestimonialRepository testimonialRepository;
     @Mock private OrganisationRepository organisationRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
+    @Mock private com.schedy.repository.UserRepository userRepository;
     @Mock private TenantContext tenantContext;
     @Mock private R2StorageService r2StorageService;
 
@@ -80,10 +81,12 @@ class TestimonialServiceTest {
 
     private TestimonialDto buildDto(String authorName, String authorRole, String authorCity,
                                     String quote, String quoteTitle) {
+        // V48 — DTO trimme : logoUrl/linkedin/website/fb/ig/twitter retires
+        // (derives serveur via snapshot Organisation + User, ou supprimes).
         return new TestimonialDto(
                 authorName, authorRole, authorCity, quote, quoteTitle,
                 5, "fr",
-                null, null, null, null, null, null, null, null, null
+                null, null, null
         );
     }
 
@@ -246,7 +249,7 @@ class TestimonialServiceTest {
             testimonialService.delete(TESTIMONIAL_ID);
 
             verify(testimonialRepository).delete(existing);
-            verify(r2StorageService).deleteLogo(logoUrl);
+            verify(r2StorageService).deleteBlob(logoUrl);
         }
 
         @Test
@@ -258,7 +261,7 @@ class TestimonialServiceTest {
             testimonialService.delete(TESTIMONIAL_ID);
 
             verify(testimonialRepository).delete(existing);
-            verify(r2StorageService, never()).deleteLogo(any());
+            verify(r2StorageService, never()).deleteBlob(any());
         }
 
         @Test
@@ -270,7 +273,7 @@ class TestimonialServiceTest {
             testimonialService.delete(TESTIMONIAL_ID);
 
             verify(testimonialRepository).delete(existing);
-            verify(r2StorageService, never()).deleteLogo(any());
+            verify(r2StorageService, never()).deleteBlob(any());
         }
 
         @Test
@@ -283,7 +286,7 @@ class TestimonialServiceTest {
                     () -> testimonialService.delete(TESTIMONIAL_ID));
             assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
             verify(testimonialRepository, never()).delete(any(Testimonial.class));
-            verify(r2StorageService, never()).deleteLogo(any());
+            verify(r2StorageService, never()).deleteBlob(any());
         }
 
         @Test
@@ -295,7 +298,7 @@ class TestimonialServiceTest {
                     () -> testimonialService.delete(TESTIMONIAL_ID));
             assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
             verify(testimonialRepository, never()).delete(any(Testimonial.class));
-            verify(r2StorageService, never()).deleteLogo(any());
+            verify(r2StorageService, never()).deleteBlob(any());
         }
     }
 }

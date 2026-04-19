@@ -61,6 +61,32 @@ public class Organisation {
     @Column(name = "stripe_customer_id", length = 255)
     private String stripeCustomerId;
 
+    // Added by V48 migration — brand assets centralises. Source de verite reutilisee
+    // par le snapshot Testimonial, et plus tard par signatures email/factures/kiosque.
+    // Le logo passe par l'endpoint multipart /api/v1/organisation/me/logo (SVG
+    // sanitise + stocke sur R2). website_url et linkedin_url sont editables via
+    // PATCH /api/v1/organisation/me.
+    @Column(name = "logo_url", length = 500)
+    private String logoUrl;
+
+    @Column(name = "website_url", length = 500)
+    private String websiteUrl;
+
+    @Column(name = "linkedin_url", length = 500)
+    private String linkedinUrl;
+
+    // Added by V51 migration — restauration des reseaux sociaux entreprise
+    // (Facebook/Instagram/X) supprimes en V48. Demande utilisateur : ces
+    // canaux restent utilises en B2B PME QC/MG.
+    @Column(name = "facebook_url", length = 500)
+    private String facebookUrl;
+
+    @Column(name = "instagram_url", length = 500)
+    private String instagramUrl;
+
+    @Column(name = "twitter_url", length = 500)
+    private String twitterUrl;
+
     // Added by V26 migration — superadmin verification workflow
     @Column(name = "verification_status", length = 20, nullable = false)
     @Builder.Default

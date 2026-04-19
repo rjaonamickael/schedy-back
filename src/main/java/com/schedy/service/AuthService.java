@@ -13,16 +13,21 @@ import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.entity.User;
+import com.schedy.entity.UserSession;
 import com.schedy.exception.BusinessRuleException;
 import com.schedy.exception.ResourceNotFoundException;
 import com.schedy.repository.EmployeRepository;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.SubscriptionRepository;
+import com.schedy.repository.TestimonialRepository;
 import com.schedy.repository.UserRepository;
+import com.schedy.repository.UserSessionRepository;
 import com.schedy.util.CryptoUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,12 +50,28 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final UserSessionRepository sessionRepository;
     private final EmployeRepository employeRepository;
     private final OrganisationRepository organisationRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
+    // V49 — snapshot guard + R2 cleanup pour photo perso user.
+    private final TestimonialRepository testimonialRepository;
+    private final R2StorageService r2StorageService;
+
+    /**
+     * V50 — per-user cap on concurrent refresh-token sessions. A typical Schedy
+     * user has laptop pro + laptop perso + mobile = 3 devices, so 5 gives
+     * breathing room without becoming a vector for session-table bloat. When
+     * the cap is reached, {@link #createSession} evicts the oldest session
+     * (FIFO by row id).
+     */
+    private static final int MAX_SESSIONS_PER_USER = 5;
+
+    /** Must match {@code jwt.refresh-token-expiration} and the cookie Max-Age. */
+    private static final Duration REFRESH_TOKEN_TTL = Duration.ofDays(7);
 
     @Value("${schedy.invitation.expiry-hours:24}")
     private int invitationExpiryHours;
@@ -79,7 +100,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResult register(RegisterRequest request) {
+    public AuthResult register(RegisterRequest request, HttpServletRequest httpReq) {
         if (userRepository.existsByEmail(request.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Un utilisateur avec cet email existe d\u00e9j\u00e0 / A user with this email already exists");
@@ -111,11 +132,9 @@ public class AuthService {
                 .organisationId(null)
                 .build();
 
+        userRepository.save(user); // assign id so createSession can reference it
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
-        user.setRefreshToken(hashToken(refreshToken));
-
-        userRepository.save(user);
+        String refreshToken = createSession(user, httpReq);
         log.info("New user registered: {} with role {}", request.email(), role);
 
         AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
@@ -123,7 +142,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResult login(AuthRequest request) {
+    public AuthResult login(AuthRequest request, HttpServletRequest httpReq) {
         String email = request.email().toLowerCase().trim();
 
         // B-H16: Check per-account lockout before attempting authentication
@@ -166,9 +185,7 @@ public class AuthService {
         }
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
-        user.setRefreshToken(hashToken(refreshToken));
-        userRepository.save(user);
+        String refreshToken = createSession(user, httpReq);
         log.info("User logged in: {}", user.getEmail());
 
         AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
@@ -183,18 +200,17 @@ public class AuthService {
      * <p>SEC-20 / Sprint 11 : returns an {@link AuthResult} so the controller can pack
      * the raw refresh token into an HttpOnly cookie. The JSON body no longer carries it.</p>
      *
-     * @param email the user's email (extracted from the validated pendingToken)
+     * @param email   the user's email (extracted from the validated pendingToken)
+     * @param httpReq current servlet request, used to record user-agent / IP on the new session
      * @return an {@link AuthResult} containing the access-token body + the raw refresh JWT
      */
     @Transactional
-    public AuthResult completeLogin(String email) {
+    public AuthResult completeLogin(String email, HttpServletRequest httpReq) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable"));
 
         String accessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
-        String refreshToken = jwtUtil.generateRefreshToken(user.getEmail());
-        user.setRefreshToken(hashToken(refreshToken));
-        userRepository.save(user);
+        String refreshToken = createSession(user, httpReq);
         log.info("2FA login completed for: {}", user.getEmail());
 
         AuthResponse response = AuthResponse.authenticated(accessToken, user.getEmail(), user.getRole().name(),
@@ -223,9 +239,16 @@ public class AuthService {
      * {@code refreshToken} HttpOnly cookie by the controller) instead of a body DTO.
      * Throws 401 on missing/invalid/mismatched tokens — consistent with the rest
      * of the auth contract so the frontend interceptor can drop the session.
+     *
+     * <p>V50 : session lookup is keyed by {@link UserSession#getTokenHash()} instead
+     * of the legacy {@code app_user.refresh_token} column, so the same account can
+     * refresh independently on multiple devices. Rotation creates the new session
+     * row <b>before</b> deleting the presented one so a crash between the two steps
+     * at worst leaves one extra session (swept by the scheduled cleanup) — never a
+     * gap that would force the user to log in again.</p>
      */
     @Transactional
-    public AuthResult refresh(String token) {
+    public AuthResult refresh(String token, HttpServletRequest httpReq) {
         if (token == null || token.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expiree : refresh token manquant");
         }
@@ -238,28 +261,88 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur introuvable"));
 
-        if (!hashToken(token).equals(user.getRefreshToken())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token ne correspond pas");
+        UserSession oldSession = sessionRepository.findByTokenHash(hashToken(token))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "Session invalide ou revoquee"));
+
+        if (!oldSession.getUserId().equals(user.getId())) {
+            // Defensive: the cookie's JWT email somehow maps to a different user's
+            // session row. Should never happen but never hand back a token either.
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session incoherente");
         }
 
         String newAccessToken = jwtUtil.generateAccessToken(user.getEmail(), user.getRole().name(), user.getOrganisationId());
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getEmail());
-        user.setRefreshToken(hashToken(newRefreshToken));
-        userRepository.save(user);
+        String newRefreshToken = createSession(user, httpReq);
+        sessionRepository.delete(oldSession);
         log.debug("Token refreshed for: {}", email);
 
         AuthResponse response = AuthResponse.authenticated(newAccessToken, user.getEmail(), user.getRole().name(), user.getEmployeId(), user.getOrganisationId(), resolveOrgPays(user.getOrganisationId()));
         return AuthResult.withRefresh(response, newRefreshToken);
     }
 
+    /**
+     * V50 — logs out only the device whose refresh cookie was presented. Other
+     * active sessions on the same account are untouched. Idempotent when the
+     * token is already unknown (returning from a stale tab after logout-all).
+     */
     @Transactional
     public void logout(String refreshToken) {
-        String hashedToken = hashToken(refreshToken);
-        userRepository.findByRefreshToken(hashedToken).ifPresent(user -> {
-            user.setRefreshToken(null);
-            userRepository.save(user);
-            log.info("User logged out: {}", user.getEmail());
+        sessionRepository.findByTokenHash(hashToken(refreshToken)).ifPresent(session -> {
+            sessionRepository.delete(session);
+            log.info("Session {} logged out (user id: {})", session.getId(), session.getUserId());
         });
+    }
+
+    /**
+     * V50 — creates a fresh {@link UserSession} for the given user, enforcing
+     * the per-user cap with FIFO eviction (oldest {@code id} first). Records
+     * the user-agent and IP address when a servlet request is available so an
+     * eventual "active sessions" screen can label devices meaningfully.
+     *
+     * @return the raw refresh JWT that must be sent to the browser as an
+     *         HttpOnly cookie — only the SHA-256 hash is persisted server-side.
+     */
+    private String createSession(User user, HttpServletRequest httpReq) {
+        long count = sessionRepository.countByUserId(user.getId());
+        if (count >= MAX_SESSIONS_PER_USER) {
+            sessionRepository.findByUserIdOrderByIdAsc(user.getId()).stream()
+                    .findFirst()
+                    .ifPresent(oldest -> {
+                        sessionRepository.delete(oldest);
+                        log.info("Evicted oldest session {} for user {} (cap {})",
+                                oldest.getId(), user.getEmail(), MAX_SESSIONS_PER_USER);
+                    });
+        }
+
+        String rawToken = jwtUtil.generateRefreshToken(user.getEmail());
+        UserSession session = UserSession.builder()
+                .userId(user.getId())
+                .tokenHash(hashToken(rawToken))
+                .userAgent(truncate(headerOrNull(httpReq, HttpHeaders.USER_AGENT), 512))
+                .ipAddress(extractIp(httpReq))
+                .expiresAt(Instant.now().plus(REFRESH_TOKEN_TTL))
+                .build();
+        sessionRepository.save(session);
+        return rawToken;
+    }
+
+    private static String headerOrNull(HttpServletRequest req, String name) {
+        return req == null ? null : req.getHeader(name);
+    }
+
+    private static String extractIp(HttpServletRequest req) {
+        if (req == null) return null;
+        String xff = req.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            int comma = xff.indexOf(',');
+            return truncate(comma > 0 ? xff.substring(0, comma).trim() : xff.trim(), 45);
+        }
+        return truncate(req.getRemoteAddr(), 45);
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /**
@@ -289,9 +372,12 @@ public class AuthService {
 
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         user.setPasswordSet(true);
-        user.setRefreshToken(null);
         userRepository.save(user);
-        log.info("Password changed for user: {} — refresh token invalidated", email);
+        // V50 — logout every active device, including the one that just changed
+        // its password. The frontend is expected to redirect to /login right
+        // after this call so the user reconnects with fresh credentials.
+        sessionRepository.deleteByUserId(user.getId());
+        log.info("Password changed for user: {} — all sessions invalidated", email);
     }
 
     /**
@@ -315,8 +401,52 @@ public class AuthService {
             }
         }
 
+        // V49 — LinkedIn perso. null = pas de changement, "" = clear explicite.
+        if (request.linkedinUrl() != null) {
+            String trimmed = request.linkedinUrl().trim();
+            user.setLinkedinUrl(trimmed.isEmpty() ? null : trimmed);
+        }
+
         userRepository.save(user);
         log.info("Profile updated for user: {}", email);
+        return toProfileResponse(user);
+    }
+
+    /**
+     * V49 — persiste l'URL de la photo perso fraichement uploadee sur R2.
+     * Cleanup best-effort de l'ancienne photo si aucun temoignage ne la snapshote.
+     */
+    @Transactional
+    public UserProfileResponse setPhotoUrl(String email, String newPhotoUrl) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+        String oldPhotoUrl = user.getPhotoUrl();
+        user.setPhotoUrl(newPhotoUrl);
+        userRepository.save(user);
+        log.info("User photo updated user={} newUrl={}", email, newPhotoUrl);
+
+        if (oldPhotoUrl != null && !oldPhotoUrl.isBlank() && !oldPhotoUrl.equals(newPhotoUrl)) {
+            if (!testimonialRepository.existsByAuthorPhotoUrl(oldPhotoUrl)) {
+                r2StorageService.deleteBlob(oldPhotoUrl);
+            }
+        }
+        return toProfileResponse(user);
+    }
+
+    /** V49 — clear photo perso : nullify + cleanup R2. */
+    @Transactional
+    public UserProfileResponse clearPhotoUrl() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
+        String oldPhotoUrl = user.getPhotoUrl();
+        if (oldPhotoUrl == null || oldPhotoUrl.isBlank()) return toProfileResponse(user);
+        user.setPhotoUrl(null);
+        userRepository.save(user);
+        log.info("User photo cleared user={}", email);
+        if (!testimonialRepository.existsByAuthorPhotoUrl(oldPhotoUrl)) {
+            r2StorageService.deleteBlob(oldPhotoUrl);
+        }
         return toProfileResponse(user);
     }
 
@@ -338,7 +468,9 @@ public class AuthService {
                 user.getOrganisationId(),
                 orgName,
                 user.getEmployeId(),
-                planTier
+                planTier,
+                user.getPhotoUrl(),
+                user.getLinkedinUrl()
         );
     }
 
@@ -449,8 +581,9 @@ public class AuthService {
         user.setPasswordResetToken(null);
         user.setPasswordResetTokenExpiresAt(null);
         user.setPasswordSet(true);
-        user.setRefreshToken(null); // Invalidate all active sessions
         userRepository.save(user);
+        // V50 — invalidate ALL active sessions (every device) on password reset.
+        sessionRepository.deleteByUserId(user.getId());
         log.info("Password reset successfully for user: {} — all sessions invalidated", user.getEmail());
     }
 

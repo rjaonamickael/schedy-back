@@ -6,16 +6,21 @@ import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.UserProfileResponse;
 import com.schedy.service.AuthService;
+import com.schedy.service.R2StorageService;
 import com.schedy.service.TotpService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/v1/user")
@@ -25,6 +30,7 @@ public class UserController {
 
     private final AuthService authService;
     private final TotpService totpService;
+    private final R2StorageService r2StorageService;
 
     /**
      * GET /api/v1/user/profile
@@ -57,6 +63,34 @@ public class UserController {
     public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         authService.changePassword(request);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * V49 — POST /api/v1/user/profile/photo (multipart/form-data)
+     * Upload d'une photo personnelle (JPG/PNG/WEBP, 2 Mo max). L'URL R2
+     * est persistee dans {@code User.photoUrl} — source de verite pour le
+     * snapshot {@code Testimonial.authorPhotoUrl} au submit.
+     */
+    @PostMapping(value = "/profile/photo", consumes = "multipart/form-data")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> uploadPhoto(
+            @RequestParam("file") MultipartFile file) {
+        // Capture l'email sur le thread HTTP avant de passer dans le pool AWS.
+        // SecurityContextHolder est ThreadLocal : il sera null sur le thread du CompletableFuture.
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return r2StorageService.uploadUserPhotoAsync(file)
+                .thenApply(publicUrl -> {
+                    authService.setPhotoUrl(email, publicUrl);
+                    return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("url", publicUrl));
+                });
+    }
+
+    /**
+     * V49 — DELETE /api/v1/user/profile/photo
+     * Clear la photo (nullify) + cleanup R2 best-effort.
+     */
+    @DeleteMapping("/profile/photo")
+    public ResponseEntity<UserProfileResponse> deletePhoto() {
+        return ResponseEntity.ok(authService.clearPhotoUrl());
     }
 
     /**

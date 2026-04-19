@@ -57,15 +57,19 @@ public final class SvgSanitizer {
     public static final int MAX_SVG_BYTES = 100 * 1024; // 100 KB
 
     /**
-     * Aspect-ratio bounds for logos. Schedy's card container is a 72×72
-     * square with {@code object-fit: contain}. A logo that is too wide
-     * (e.g. 400×50 = 8:1) would render as a 72×9 strip lost in whitespace,
-     * breaking visual consistency across the testimonials grid. We enforce
-     * a ratio between 0.5 (2:1 portrait) and 2.0 (2:1 landscape) — generous
-     * enough to accept most real logos while rejecting banner-style marks.
+     * Aspect-ratio bounds for logos. V48 : bounds assouplies pour accepter
+     * les logos B2B horizontaux (bandeaux style wordmark). La plupart des
+     * logos d'entreprises ont un ratio entre 2.5:1 et 4:1 (ex : Schedy
+     * lui-meme = 2.9:1, Stripe = 2.8:1, Notion = 3.6:1). On garde une
+     * borne superieure a 5.0 pour exclure les bannieres vraiment degenerees
+     * (ex : 1200x80 = 15:1 qui deviendrait illisible dans la card).
+     *
+     * Le container d'affichage utilise {@code object-fit: contain} : un
+     * logo 3:1 dans une box carree 44px rendra a 44x15, ce qui reste
+     * lisible et professionnel.
      */
-    public static final double MIN_ASPECT_RATIO = 0.5;
-    public static final double MAX_ASPECT_RATIO = 2.0;
+    public static final double MIN_ASPECT_RATIO = 0.2;  // 1:5 portrait
+    public static final double MAX_ASPECT_RATIO = 5.0;  // 5:1 landscape (couvre ~95% des logos B2B)
 
     /**
      * Shape elements that count as "visible content". A clean SVG without
