@@ -3,9 +3,12 @@ package com.schedy.service.stripe;
 import com.schedy.entity.Organisation;
 import com.schedy.entity.StripeEvent;
 import com.schedy.entity.Subscription;
+import com.schedy.entity.User;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.StripeEventRepository;
 import com.schedy.repository.SubscriptionRepository;
+import com.schedy.repository.UserRepository;
+import com.schedy.service.EmailService;
 import com.stripe.model.Event;
 import com.stripe.model.Invoice;
 import com.stripe.model.StripeObject;
@@ -35,6 +38,9 @@ public class StripeWebhookService {
     private final OrganisationRepository organisationRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final StripeService stripeService;
+    // S18-BE-05 — customer notifications (trial_will_end, payment_failed, payment_action_required)
+    private final UserRepository userRepository;
+    private final EmailService emailService;
 
     @Transactional
     public boolean handle(Event event) {
@@ -189,8 +195,14 @@ public class StripeWebhookService {
         String orgId = readMetadataOrgId(stripeSub.getMetadata());
         if (orgId == null) orgId = resolveOrgFromCustomer(stripeSub.getCustomer());
         log.info("Stripe trial_will_end org={} sub={} ends={}", orgId, stripeSub.getId(), stripeSub.getTrialEnd());
-        log.warn("ACTION REQUIRED: trial ending soon for org={} sub={}, email notification not yet implemented", orgId, stripeSub.getId());
-        // TODO S18r: send trial_will_end notification email to org admin via EmailService
+        if (orgId == null) {
+            log.warn("Stripe trial_will_end: no resolvable org, skipping email notification sub={}", stripeSub.getId());
+            return null;
+        }
+        // S18-BE-05 — notify org admin via email
+        Instant trialEndsAt = stripeSub.getTrialEnd() != null
+                ? Instant.ofEpochSecond(stripeSub.getTrialEnd()) : null;
+        sendStripeNotification(orgId, NotificationKind.TRIAL_WILL_END, trialEndsAt, null);
         return orgId;
     }
 
@@ -222,7 +234,11 @@ public class StripeWebhookService {
             subscriptionRepository.save(local);
         });
         log.error("Stripe invoice payment_failed org={} invoice={}", orgId, invoice.getId());
-        // TODO S18r: send payment failure notification email to org admin via EmailService
+        // S18-BE-05 — notify org admin via email. invoice.getHostedInvoiceUrl() is the
+        // Stripe-hosted invoice page; fallback to null (email template falls back to
+        // frontendUrl/admin/billing).
+        String invoiceUrl = safeHostedInvoiceUrl(invoice);
+        sendStripeNotification(orgId, NotificationKind.PAYMENT_FAILED, null, invoiceUrl);
         return orgId;
     }
 
@@ -231,8 +247,61 @@ public class StripeWebhookService {
         if (!(raw instanceof Invoice invoice)) return null;
         String orgId = resolveOrgFromCustomer(invoice.getCustomer());
         log.warn("Stripe payment action required (SCA/3DS) org={} invoice={}", orgId, invoice.getId());
-        // TODO S18r: send SCA/3DS action-required notification email to org admin
+        if (orgId == null) {
+            log.warn("Stripe payment_action_required: no resolvable org, skipping email notification invoice={}", invoice.getId());
+            return null;
+        }
+        // S18-BE-05 — notify org admin via email
+        String invoiceUrl = safeHostedInvoiceUrl(invoice);
+        sendStripeNotification(orgId, NotificationKind.PAYMENT_ACTION_REQUIRED, null, invoiceUrl);
         return orgId;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // S18-BE-05 — Email notification helpers
+    // ──────────────────────────────────────────────────────────────
+
+    private enum NotificationKind { TRIAL_WILL_END, PAYMENT_FAILED, PAYMENT_ACTION_REQUIRED }
+
+    /**
+     * Looks up the org admin (ADMIN role), resolves the org display name,
+     * then dispatches the appropriate email via {@link EmailService}. If no
+     * ADMIN user exists for the org, logs a warning and returns — no email
+     * is sent (never silent-fail to a wrong recipient).
+     */
+    private void sendStripeNotification(String orgId, NotificationKind kind,
+                                        Instant trialEndsAt, String invoiceUrl) {
+        String orgName = organisationRepository.findById(orgId)
+                .map(Organisation::getNom)
+                .orElse(orgId);
+        userRepository.findFirstByOrganisationIdAndRole(orgId, User.UserRole.ADMIN)
+                .ifPresentOrElse(
+                        admin -> dispatchNotification(admin.getEmail(), orgName, kind, trialEndsAt, invoiceUrl),
+                        () -> log.warn("Stripe {}: no ADMIN user found for org={}, email not sent", kind, orgId));
+    }
+
+    private void dispatchNotification(String email, String orgName, NotificationKind kind,
+                                      Instant trialEndsAt, String invoiceUrl) {
+        switch (kind) {
+            case TRIAL_WILL_END -> emailService.sendStripeTrialWillEndEmail(email, orgName, trialEndsAt);
+            case PAYMENT_FAILED -> emailService.sendStripePaymentFailedEmail(email, orgName, invoiceUrl);
+            case PAYMENT_ACTION_REQUIRED ->
+                    emailService.sendStripePaymentActionRequiredEmail(email, orgName, invoiceUrl);
+        }
+    }
+
+    /**
+     * Defensive wrapper around {@code Invoice.getHostedInvoiceUrl()}. Stripe SDK
+     * getter name is stable in v32; this wrapper guards against nulls and
+     * future SDK changes without crashing the webhook processing.
+     */
+    private static String safeHostedInvoiceUrl(Invoice invoice) {
+        try {
+            String url = invoice.getHostedInvoiceUrl();
+            return (url != null && !url.isBlank()) ? url : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -232,7 +232,8 @@ public class R2StorageService {
     // Validators
     // ------------------------------------------------------------------
 
-    private static void validateSvg(MultipartFile file) {
+    /** Package-private for unit tests ({@code R2StorageServiceValidationTest}). */
+    static void validateSvg(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleException("Aucun fichier fourni.");
         }
@@ -253,11 +254,20 @@ public class R2StorageService {
         if (original != null && !original.toLowerCase(Locale.ROOT).endsWith(".svg")) {
             throw new BusinessRuleException("Extension non supportée — seul le .svg est accepté.");
         }
+        // S18-BE-03 — magic-bytes check: the file content must actually look
+        // like SVG (text-based, starts with <?xml or <svg after optional BOM
+        // and whitespace). Blocks JPEG/PNG/WEBP/binary disguised as SVG.
+        FileKind kind = detectFileSignature(file);
+        if (kind != FileKind.SVG) {
+            throw new BusinessRuleException(
+                    "Le contenu du fichier ne correspond pas au type SVG déclaré.");
+        }
     }
 
-    private record ValidatedPhoto(String contentType, String extension) {}
+    record ValidatedPhoto(String contentType, String extension) {}
 
-    private static ValidatedPhoto validatePhoto(MultipartFile file) {
+    /** Package-private for unit tests ({@code R2StorageServiceValidationTest}). */
+    static ValidatedPhoto validatePhoto(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleException("Aucun fichier fourni.");
         }
@@ -271,6 +281,15 @@ public class R2StorageService {
             throw new BusinessRuleException(
                     "Type de fichier non supporté (" + contentType + "). JPG, PNG ou WEBP uniquement.");
         }
+        // S18-BE-03 — magic-bytes check: the declared MIME must match the
+        // actual binary signature. Blocks a malicious SVG renamed .jpg with
+        // spoofed Content-Type: image/jpeg from reaching R2 and skipping
+        // SvgSanitizer.
+        FileKind kind = detectFileSignature(file);
+        if (!matchesDeclaredPhotoMime(kind, lowered)) {
+            throw new BusinessRuleException(
+                    "Le contenu du fichier ne correspond pas au type annoncé (" + contentType + ").");
+        }
         String ext = switch (lowered) {
             case "image/jpeg", "image/jpg" -> ".jpg";
             case "image/png"               -> ".png";
@@ -278,5 +297,75 @@ public class R2StorageService {
             default                        -> ".bin";
         };
         return new ValidatedPhoto(lowered.equals("image/jpg") ? "image/jpeg" : lowered, ext);
+    }
+
+    // ------------------------------------------------------------------
+    // S18-BE-03 — Magic-bytes signature detection (no external dep)
+    // ------------------------------------------------------------------
+
+    /** File-kind inferred from the first few bytes (NOT from the Content-Type header). */
+    private enum FileKind { JPEG, PNG, WEBP, SVG, UNKNOWN }
+
+    /**
+     * Inspects the first 256 bytes of the uploaded file and returns the
+     * detected kind. Uses industry-standard magic-bytes signatures:
+     * <ul>
+     *   <li>JPEG : {@code FF D8 FF}</li>
+     *   <li>PNG  : {@code 89 50 4E 47 0D 0A 1A 0A}</li>
+     *   <li>WEBP : {@code "RIFF" ???? "WEBP"} (bytes 0-3 and 8-11)</li>
+     *   <li>SVG  : UTF-8 text starting with {@code <?xml} or {@code <svg}
+     *             after an optional BOM and whitespace</li>
+     * </ul>
+     */
+    private static FileKind detectFileSignature(MultipartFile file) {
+        byte[] head;
+        try {
+            byte[] all = file.getBytes();
+            int len = Math.min(256, all.length);
+            head = new byte[len];
+            System.arraycopy(all, 0, head, 0, len);
+        } catch (java.io.IOException e) {
+            log.warn("Could not read file bytes for magic-bytes detection: {}", e.getMessage());
+            return FileKind.UNKNOWN;
+        }
+        if (head.length == 0) return FileKind.UNKNOWN;
+
+        if (head.length >= 3
+                && (head[0] & 0xFF) == 0xFF
+                && (head[1] & 0xFF) == 0xD8
+                && (head[2] & 0xFF) == 0xFF) {
+            return FileKind.JPEG;
+        }
+        if (head.length >= 8
+                && (head[0] & 0xFF) == 0x89
+                && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47
+                && (head[4] & 0xFF) == 0x0D && (head[5] & 0xFF) == 0x0A
+                && (head[6] & 0xFF) == 0x1A && (head[7] & 0xFF) == 0x0A) {
+            return FileKind.PNG;
+        }
+        if (head.length >= 12
+                && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F'
+                && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') {
+            return FileKind.WEBP;
+        }
+        // SVG fallback: text starting with <?xml or <svg after optional BOM.
+        String text = new String(head, StandardCharsets.UTF_8);
+        if (!text.isEmpty() && text.charAt(0) == '\uFEFF') {
+            text = text.substring(1);
+        }
+        String trimmed = text.stripLeading().toLowerCase(Locale.ROOT);
+        if (trimmed.startsWith("<?xml") || trimmed.startsWith("<svg")) {
+            return FileKind.SVG;
+        }
+        return FileKind.UNKNOWN;
+    }
+
+    private static boolean matchesDeclaredPhotoMime(FileKind kind, String loweredMime) {
+        return switch (loweredMime) {
+            case "image/jpeg", "image/jpg" -> kind == FileKind.JPEG;
+            case "image/png"               -> kind == FileKind.PNG;
+            case "image/webp"              -> kind == FileKind.WEBP;
+            default                        -> false;
+        };
     }
 }

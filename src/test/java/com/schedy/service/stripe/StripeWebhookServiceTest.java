@@ -3,9 +3,12 @@ package com.schedy.service.stripe;
 import com.schedy.entity.Organisation;
 import com.schedy.entity.StripeEvent;
 import com.schedy.entity.Subscription;
+import com.schedy.entity.User;
 import com.schedy.repository.OrganisationRepository;
 import com.schedy.repository.StripeEventRepository;
 import com.schedy.repository.SubscriptionRepository;
+import com.schedy.repository.UserRepository;
+import com.schedy.service.EmailService;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.Invoice;
@@ -37,6 +40,9 @@ class StripeWebhookServiceTest {
     @Mock private OrganisationRepository organisationRepository;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private StripeService stripeService;
+    // S18-BE-05 — customer notification dependencies
+    @Mock private UserRepository userRepository;
+    @Mock private EmailService   emailService;
 
     @InjectMocks private StripeWebhookService stripeWebhookService;
 
@@ -396,6 +402,120 @@ class StripeWebhookServiceTest {
             ArgumentCaptor<StripeEvent> captor = ArgumentCaptor.forClass(StripeEvent.class);
             verify(stripeEventRepository).save(captor.capture());
             assertThat(captor.getValue().getProcessedAt()).isNotNull();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // S18-BE-05 — customer email notifications
+    // ──────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("S18-BE-05 — email notifications for trial / payment events")
+    class EmailNotifications {
+
+        private User adminUser() {
+            // Use a real User via @Builder rather than mock(User.class). Mockito
+            // cannot reliably intercept Lombok-generated getters on JPA entities
+            // in strict stubbing mode (final or package-scoped in some JDKs),
+            // which produced UnfinishedStubbingException in earlier runs.
+            return User.builder().email("admin@acme.com").build();
+        }
+
+        @Test
+        @DisplayName("trial_will_end — sends email to org admin when present")
+        void trialWillEnd_sendsEmailToAdmin() {
+            com.stripe.model.Subscription stripeSub = mock(com.stripe.model.Subscription.class);
+            when(stripeSub.getMetadata()).thenReturn(java.util.Map.of("organisationId", ORG_ID));
+            lenient().when(stripeSub.getCustomer()).thenReturn(CUST_ID);
+            lenient().when(stripeSub.getId()).thenReturn(SUB_ID);
+            long trialEpoch = java.time.Instant.parse("2026-05-01T00:00:00Z").getEpochSecond();
+            when(stripeSub.getTrialEnd()).thenReturn(trialEpoch);
+
+            when(organisationRepository.findById(ORG_ID)).thenReturn(
+                    Optional.of(Organisation.builder().id(ORG_ID).nom("Acme Inc").build()));
+            when(userRepository.findFirstByOrganisationIdAndRole(ORG_ID, User.UserRole.ADMIN))
+                    .thenReturn(Optional.of(adminUser()));
+
+            stripeWebhookService.handle(buildEvent("customer.subscription.trial_will_end", stripeSub));
+
+            verify(emailService).sendStripeTrialWillEndEmail(
+                    "admin@acme.com", "Acme Inc", java.time.Instant.ofEpochSecond(trialEpoch));
+        }
+
+        @Test
+        @DisplayName("trial_will_end — does NOT send email when no ADMIN user in org")
+        void trialWillEnd_noAdmin_noEmail() {
+            com.stripe.model.Subscription stripeSub = mock(com.stripe.model.Subscription.class);
+            when(stripeSub.getMetadata()).thenReturn(java.util.Map.of("organisationId", ORG_ID));
+            lenient().when(stripeSub.getCustomer()).thenReturn(CUST_ID);
+            lenient().when(stripeSub.getId()).thenReturn(SUB_ID);
+            when(stripeSub.getTrialEnd()).thenReturn(null);
+
+            when(organisationRepository.findById(ORG_ID)).thenReturn(
+                    Optional.of(Organisation.builder().id(ORG_ID).nom("Acme Inc").build()));
+            when(userRepository.findFirstByOrganisationIdAndRole(ORG_ID, User.UserRole.ADMIN))
+                    .thenReturn(Optional.empty());
+
+            stripeWebhookService.handle(buildEvent("customer.subscription.trial_will_end", stripeSub));
+
+            verifyNoInteractions(emailService);
+        }
+
+        @Test
+        @DisplayName("payment_failed — sends email to org admin after updating subscription status")
+        void paymentFailed_sendsEmailToAdmin() {
+            Invoice invoice = mock(Invoice.class);
+            when(invoice.getCustomer()).thenReturn(CUST_ID);
+            when(invoice.getId()).thenReturn("in_failed_001");
+            lenient().when(invoice.getHostedInvoiceUrl()).thenReturn("https://invoice.stripe.com/x");
+
+            Organisation org = Organisation.builder().id(ORG_ID).nom("Acme Inc").build();
+            when(organisationRepository.findByStripeCustomerId(CUST_ID)).thenReturn(Optional.of(org));
+            when(organisationRepository.findById(ORG_ID)).thenReturn(Optional.of(org));
+            when(subscriptionRepository.findByOrganisationId(ORG_ID))
+                    .thenReturn(Optional.of(activeSubscription()));
+            when(subscriptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findFirstByOrganisationIdAndRole(ORG_ID, User.UserRole.ADMIN))
+                    .thenReturn(Optional.of(adminUser()));
+
+            stripeWebhookService.handle(buildEvent("invoice.payment_failed", invoice));
+
+            verify(emailService).sendStripePaymentFailedEmail(
+                    "admin@acme.com", "Acme Inc", "https://invoice.stripe.com/x");
+        }
+
+        @Test
+        @DisplayName("payment_action_required — sends email to org admin")
+        void paymentActionRequired_sendsEmailToAdmin() {
+            Invoice invoice = mock(Invoice.class);
+            when(invoice.getCustomer()).thenReturn(CUST_ID);
+            when(invoice.getId()).thenReturn("in_3ds_001");
+            lenient().when(invoice.getHostedInvoiceUrl()).thenReturn(null);
+
+            Organisation org = Organisation.builder().id(ORG_ID).nom("Acme Inc").build();
+            when(organisationRepository.findByStripeCustomerId(CUST_ID)).thenReturn(Optional.of(org));
+            when(organisationRepository.findById(ORG_ID)).thenReturn(Optional.of(org));
+            when(userRepository.findFirstByOrganisationIdAndRole(ORG_ID, User.UserRole.ADMIN))
+                    .thenReturn(Optional.of(adminUser()));
+
+            stripeWebhookService.handle(buildEvent("invoice.payment_action_required", invoice));
+
+            verify(emailService).sendStripePaymentActionRequiredEmail(
+                    "admin@acme.com", "Acme Inc", null);
+        }
+
+        @Test
+        @DisplayName("payment_action_required — skipped silently when no org resolvable")
+        void paymentActionRequired_noOrg_noEmail() {
+            Invoice invoice = mock(Invoice.class);
+            when(invoice.getCustomer()).thenReturn(CUST_ID);
+            when(invoice.getId()).thenReturn("in_3ds_orphan");
+            when(organisationRepository.findByStripeCustomerId(CUST_ID)).thenReturn(Optional.empty());
+
+            stripeWebhookService.handle(buildEvent("invoice.payment_action_required", invoice));
+
+            verifyNoInteractions(emailService);
+            verifyNoInteractions(userRepository);
         }
     }
 }

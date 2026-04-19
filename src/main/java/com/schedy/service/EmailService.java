@@ -249,4 +249,27 @@ public class EmailService {
             log.error("Failed to send email via SMTP to {}: {}", to, e.getMessage(), e);
         }
     }
+
+    // ── S18-BE-05 — Stripe billing notification emails ─────────────────────
+
+    @Async
+    public void sendStripeTrialWillEndEmail(String recipientEmail, String orgName, java.time.Instant trialEndsAt) {
+        String subject = "Votre p\u00e9riode d\u2019essai Schedy se termine bient\u00f4t / Your Schedy trial is ending soon";
+        String html    = htmlBuilder.buildStripeTrialWillEndHtml(EmailHtmlBuilder.escapeHtml(orgName), trialEndsAt);
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    @Async
+    public void sendStripePaymentFailedEmail(String recipientEmail, String orgName, String invoiceUrl) {
+        String subject = "\u00c9chec de paiement Schedy / Schedy payment failed";
+        String html    = htmlBuilder.buildStripePaymentFailedHtml(EmailHtmlBuilder.escapeHtml(orgName), invoiceUrl);
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
+
+    @Async
+    public void sendStripePaymentActionRequiredEmail(String recipientEmail, String orgName, String invoiceUrl) {
+        String subject = "Action requise pour votre paiement Schedy / Action required for your Schedy payment";
+        String html    = htmlBuilder.buildStripePaymentActionRequiredHtml(EmailHtmlBuilder.escapeHtml(orgName), invoiceUrl);
+        sendHtmlEmail(recipientEmail, subject, html);
+    }
 }

@@ -758,4 +758,121 @@ public class EmailHtmlBuilder {
     private static String currentYear() {
         return String.valueOf(java.time.Year.now().getValue());
     }
+
+    // ── S18-BE-05 — Stripe billing notification emails ────────────────────
+
+    public String buildStripeTrialWillEndHtml(String orgNameSafe, java.time.Instant trialEndsAt) {
+        String year    = currentYear();
+        String ctaLink = frontendUrl + "/admin/billing";
+        String dateFr  = formatDateFr(trialEndsAt);
+        String dateEn  = formatDateEn(trialEndsAt);
+        return buildEmailShell(year,
+                "Votre p\u00e9riode d\u2019essai Schedy pour " + orgNameSafe
+                + " se termine bient\u00f4t. / Your Schedy trial for " + orgNameSafe + " is ending soon.")
+            + buildStripeBilingual(
+                "Votre p\u00e9riode d\u2019essai se termine bient\u00f4t",
+                "La p\u00e9riode d\u2019essai Schedy de <strong style=\"color:#047857;\">" + orgNameSafe
+                    + "</strong> se termine le <strong>" + dateFr + "</strong>. Ajoutez un moyen de paiement "
+                    + "dans votre espace administrateur pour continuer sans interruption.",
+                "Acc\u00e9der \u00e0 mon espace", ctaLink, "#047857",
+                "Your trial period is ending soon",
+                "The Schedy trial for <strong style=\"color:#047857;\">" + orgNameSafe
+                    + "</strong> ends on <strong>" + dateEn + "</strong>. Add a payment method in your admin "
+                    + "dashboard to continue without interruption.",
+                "Access my dashboard")
+            + buildEmailFooter(year);
+    }
+
+    public String buildStripePaymentFailedHtml(String orgNameSafe, String invoiceUrl) {
+        String year    = currentYear();
+        String ctaLink = (invoiceUrl != null && !invoiceUrl.isBlank()) ? invoiceUrl : frontendUrl + "/admin/billing";
+        return buildEmailShell(year,
+                "\u00c9chec de paiement Schedy pour " + orgNameSafe
+                + ". / Schedy payment failed for " + orgNameSafe + ".")
+            + buildStripeBilingual(
+                "\u00c9chec de paiement",
+                "Le paiement de l\u2019abonnement Schedy pour <strong style=\"color:#047857;\">" + orgNameSafe
+                    + "</strong> a \u00e9chou\u00e9. Votre service reste actif pour l\u2019instant, mais sera "
+                    + "suspendu si le probl\u00e8me n\u2019est pas r\u00e9solu.",
+                "Mettre \u00e0 jour mon moyen de paiement", ctaLink, "#DC2626",
+                "Payment failed",
+                "The payment for the Schedy subscription of <strong style=\"color:#047857;\">" + orgNameSafe
+                    + "</strong> has failed. Your service remains active for now, but will be suspended if the "
+                    + "issue persists.",
+                "Update my payment method")
+            + buildEmailFooter(year);
+    }
+
+    public String buildStripePaymentActionRequiredHtml(String orgNameSafe, String invoiceUrl) {
+        String year    = currentYear();
+        String ctaLink = (invoiceUrl != null && !invoiceUrl.isBlank()) ? invoiceUrl : frontendUrl + "/admin/billing";
+        return buildEmailShell(year,
+                "Action requise pour votre paiement Schedy (" + orgNameSafe
+                + "). / Action required for your Schedy payment (" + orgNameSafe + ").")
+            + buildStripeBilingual(
+                "Authentification requise pour votre paiement",
+                "Votre banque demande une authentification suppl\u00e9mentaire (3D Secure) pour valider le "
+                    + "paiement Schedy de <strong style=\"color:#047857;\">" + orgNameSafe
+                    + "</strong>. Finalisez l\u2019authentification d\u00e8s que possible pour \u00e9viter "
+                    + "toute interruption de service.",
+                "Compl\u00e9ter l\u2019authentification", ctaLink, "#D97706",
+                "Authentication required for your payment",
+                "Your bank requires additional authentication (3D Secure) to process the Schedy payment for "
+                    + "<strong style=\"color:#047857;\">" + orgNameSafe + "</strong>. Please complete the "
+                    + "authentication as soon as possible to avoid any service interruption.",
+                "Complete authentication")
+            + buildEmailFooter(year);
+    }
+
+    /** Shared bilingual body for the 3 Stripe notification emails. */
+    private String buildStripeBilingual(
+            String titleFr, String bodyFr,
+            String ctaFr, String ctaLink, String ctaColor,
+            String titleEn, String bodyEn,
+            String ctaEn) {
+        return "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:" + ctaColor + ";line-height:1.3;\">"
+            + titleFr + "</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Bonjour,</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">" + bodyFr + "</p>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"margin:0 0 20px;\">\n"
+            + "<tr><td><a href=\"" + ctaLink + "\" target=\"_blank\" style=\"display:inline-block;background-color:"
+            + ctaColor + ";color:#FFFFFF;font-size:15px;font-weight:600;text-decoration:none;padding:13px 36px;"
+            + "border-radius:6px;\">" + ctaFr + "</a></td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">Si vous avez des questions, contactez-nous \u00e0 "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<p style=\"margin:16px 0 0;font-size:13px;color:#6B7280;\">Mickael, Fondateur de Schedy</p>\n"
+            + "</td></tr>\n"
+            + "<tr><td style=\"padding:0 32px;\"><table role=\"presentation\" border=\"0\" cellpadding=\"0\" "
+            + "cellspacing=\"0\" width=\"100%\"><tr><td style=\"border-top:1px solid #E5E7EB;\"></td></tr></table></td></tr>\n"
+            + "<tr><td style=\"padding:28px 32px 24px;\">\n"
+            + "<p style=\"margin:0 0 16px;font-size:18px;font-weight:700;color:" + ctaColor + ";line-height:1.3;\">"
+            + titleEn + "</p>\n"
+            + "<p style=\"margin:0 0 12px;font-size:15px;color:#1F2937;\">Hello,</p>\n"
+            + "<p style=\"margin:0 0 20px;font-size:15px;color:#4B5563;line-height:1.65;\">" + bodyEn + "</p>\n"
+            + "<table role=\"presentation\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"margin:0 0 20px;\">\n"
+            + "<tr><td><a href=\"" + ctaLink + "\" target=\"_blank\" style=\"display:inline-block;background-color:"
+            + ctaColor + ";color:#FFFFFF;font-size:15px;font-weight:600;text-decoration:none;padding:13px 36px;"
+            + "border-radius:6px;\">" + ctaEn + "</a></td></tr></table>\n"
+            + "<p style=\"margin:0;font-size:13px;color:#6B7280;\">For any question, reach us at "
+            + "<a href=\"mailto:support@schedy.work\" style=\"color:#047857;\">support@schedy.work</a>.</p>\n"
+            + "<p style=\"margin:16px 0 0;font-size:13px;color:#6B7280;\">Mickael, Founder of Schedy</p>\n"
+            + "</td></tr>\n";
+    }
+
+    private static String formatDateFr(java.time.Instant instant) {
+        if (instant == null) return "\u2014";
+        java.time.LocalDate d = instant.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        String[] months = { "janvier", "f\u00e9vrier", "mars", "avril", "mai", "juin",
+                "juillet", "ao\u00fbt", "septembre", "octobre", "novembre", "d\u00e9cembre" };
+        return d.getDayOfMonth() + " " + months[d.getMonthValue() - 1] + " " + d.getYear();
+    }
+
+    private static String formatDateEn(java.time.Instant instant) {
+        if (instant == null) return "\u2014";
+        java.time.LocalDate d = instant.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        String[] months = { "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December" };
+        return months[d.getMonthValue() - 1] + " " + d.getDayOfMonth() + ", " + d.getYear();
+    }
 }

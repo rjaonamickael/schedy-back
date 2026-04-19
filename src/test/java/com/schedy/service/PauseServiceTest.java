@@ -61,6 +61,10 @@ class PauseServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Defensive: ensure no SecurityContext state leaks from a previously-run
+        // test class in the same Surefire fork (AuthService/AuthControllerTest
+        // leave "alice@example.com" in the thread-local).
+        SecurityContextHolder.clearContext();
         lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -69,6 +73,11 @@ class PauseServiceTest {
                         List.of(new SimpleGrantedAuthority("ROLE_MANAGER"))
                 )
         );
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDownSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     // -------------------------------------------------------------------------

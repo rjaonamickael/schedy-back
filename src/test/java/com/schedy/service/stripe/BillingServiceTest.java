@@ -59,6 +59,9 @@ class BillingServiceTest {
 
     @BeforeEach
     void setUp() {
+        // Defensive: ensure no SecurityContext state leaks from a previously-run
+        // test class in the same Surefire fork.
+        SecurityContextHolder.clearContext();
         lenient().when(tenantContext.requireOrganisationId()).thenReturn(ORG_ID);
         lenient().when(stripeProperties.isConfigured()).thenReturn(true);
         lenient().when(stripeProperties.successPath()).thenReturn("/billing/success");
@@ -69,6 +72,11 @@ class BillingServiceTest {
                 new UsernamePasswordAuthenticationToken(
                         "admin@acme.test", "n/a",
                         List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDownSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     // ──────────────────────────────────────────────────────────────

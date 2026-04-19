@@ -12,6 +12,7 @@ import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.AuthResponse;
 import com.schedy.dto.response.UserProfileResponse;
+import com.schedy.dto.response.UserSessionResponse;
 import com.schedy.entity.User;
 import com.schedy.entity.UserSession;
 import com.schedy.exception.BusinessRuleException;
@@ -294,36 +295,138 @@ public class AuthService {
     }
 
     /**
-     * V50 — creates a fresh {@link UserSession} for the given user, enforcing
-     * the per-user cap with FIFO eviction (oldest {@code id} first). Records
-     * the user-agent and IP address when a servlet request is available so an
-     * eventual "active sessions" screen can label devices meaningfully.
+     * V50 / S18-BE-02 + S18-BE-06 — creates a fresh {@link UserSession} for
+     * the given user, enforcing the per-user cap with FIFO eviction.
+     *
+     * <p><b>Race-safe by construction</b> : we INSERT the new session first
+     * (succeeds because of the {@code UNIQUE(token_hash)} constraint V50:25),
+     * then PRUNE the surplus in the same transaction. Two concurrent logins
+     * on the same account therefore both see a consistent view
+     * (post-insert {@code count}) and each will delete enough rows to bring
+     * the table back to {@code MAX_SESSIONS_PER_USER} — the operation is
+     * idempotent even under interleaving because {@code count - MAX} is
+     * always correct regardless of how many inserts won the race.</p>
+     *
+     * <p>Records the user-agent and IP address when a servlet request is
+     * available so the "active sessions" tab can label devices meaningfully.
+     * {@code lastUsedAt} is set explicitly (not relying solely on
+     * {@code @PrePersist}) so the field semantics are intent-clear.</p>
      *
      * @return the raw refresh JWT that must be sent to the browser as an
      *         HttpOnly cookie — only the SHA-256 hash is persisted server-side.
      */
     private String createSession(User user, HttpServletRequest httpReq) {
-        long count = sessionRepository.countByUserId(user.getId());
-        if (count >= MAX_SESSIONS_PER_USER) {
-            sessionRepository.findByUserIdOrderByIdAsc(user.getId()).stream()
-                    .findFirst()
-                    .ifPresent(oldest -> {
-                        sessionRepository.delete(oldest);
-                        log.info("Evicted oldest session {} for user {} (cap {})",
-                                oldest.getId(), user.getEmail(), MAX_SESSIONS_PER_USER);
-                    });
-        }
-
         String rawToken = jwtUtil.generateRefreshToken(user.getEmail());
+        Instant now = Instant.now();
         UserSession session = UserSession.builder()
                 .userId(user.getId())
                 .tokenHash(hashToken(rawToken))
                 .userAgent(truncate(headerOrNull(httpReq, HttpHeaders.USER_AGENT), 512))
                 .ipAddress(extractIp(httpReq))
-                .expiresAt(Instant.now().plus(REFRESH_TOKEN_TTL))
+                .createdAt(now)
+                .lastUsedAt(now)
+                .expiresAt(now.plus(REFRESH_TOKEN_TTL))
                 .build();
         sessionRepository.save(session);
+
+        // Prune AFTER insert. At this point count includes the row we just
+        // created. If > MAX, delete (count - MAX) oldest rows (by id ASC).
+        long count = sessionRepository.countByUserId(user.getId());
+        if (count > MAX_SESSIONS_PER_USER) {
+            long toEvict = count - MAX_SESSIONS_PER_USER;
+            List<UserSession> sorted = sessionRepository.findByUserIdOrderByIdAsc(user.getId());
+            for (int i = 0; i < toEvict && i < sorted.size(); i++) {
+                UserSession oldest = sorted.get(i);
+                sessionRepository.delete(oldest);
+                log.info("Evicted oldest session {} for user {} (cap {})",
+                        oldest.getId(), user.getEmail(), MAX_SESSIONS_PER_USER);
+            }
+        }
         return rawToken;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // S18-BE-04 — active sessions management (listing + revocation)
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * S18-BE-04 — returns every active session for the currently authenticated
+     * user, most-recently-used first. The session whose {@code tokenHash}
+     * matches the presented refresh cookie is flagged {@code isCurrent=true}
+     * so the UI can show "this device" and disable its revoke button.
+     *
+     * @param currentRefreshToken the raw refresh JWT from the HttpOnly cookie,
+     *                            or {@code null} if the cookie is missing
+     */
+    @Transactional(readOnly = true)
+    public List<UserSessionResponse> listCurrentUserSessions(String currentRefreshToken) {
+        User user = getCurrentUserOrThrow();
+        final String currentHash = (currentRefreshToken != null && !currentRefreshToken.isBlank())
+                ? hashToken(currentRefreshToken)
+                : null;
+        return sessionRepository.findByUserIdOrderByIdAsc(user.getId()).stream()
+                .sorted((a, b) -> b.getLastUsedAt().compareTo(a.getLastUsedAt()))
+                .map(s -> new UserSessionResponse(
+                        s.getId(),
+                        s.getUserAgent(),
+                        s.getIpAddress(),
+                        s.getCreatedAt(),
+                        s.getLastUsedAt(),
+                        s.getExpiresAt(),
+                        currentHash != null && currentHash.equals(s.getTokenHash())))
+                .toList();
+    }
+
+    /**
+     * S18-BE-04 — revokes (deletes) a single session by id. The session must
+     * belong to the currently authenticated user, else 403 Forbidden. Returns
+     * 404 if the session id does not exist.
+     */
+    @Transactional
+    public void revokeSession(Long sessionId) {
+        User user = getCurrentUserOrThrow();
+        UserSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Session introuvable"));
+        if (!session.getUserId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Session non autorisee");
+        }
+        sessionRepository.delete(session);
+        log.info("Session {} revoked manually by user {}", sessionId, user.getEmail());
+    }
+
+    /**
+     * S18-BE-04 — revokes every session of the current user EXCEPT the one
+     * matching the presented refresh cookie. Intended for the "sign out from
+     * all other devices" button in the security tab.
+     *
+     * <p>If the cookie is missing or doesn't match any row (already rotated,
+     * stale), ALL sessions are revoked — the caller has already been
+     * authenticated by the access token, so no session to keep.</p>
+     *
+     * @return the number of sessions revoked
+     */
+    @Transactional
+    public int revokeAllOtherSessions(String currentRefreshToken) {
+        User user = getCurrentUserOrThrow();
+        final String currentHash = (currentRefreshToken != null && !currentRefreshToken.isBlank())
+                ? hashToken(currentRefreshToken)
+                : null;
+        List<UserSession> all = sessionRepository.findByUserIdOrderByIdAsc(user.getId());
+        int revoked = 0;
+        for (UserSession s : all) {
+            if (currentHash != null && currentHash.equals(s.getTokenHash())) continue;
+            sessionRepository.delete(s);
+            revoked++;
+        }
+        log.info("User {} revoked {} other sessions (kept current)", user.getEmail(), revoked);
+        return revoked;
+    }
+
+    private User getCurrentUserOrThrow() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
     }
 
     private static String headerOrNull(HttpServletRequest req, String name) {

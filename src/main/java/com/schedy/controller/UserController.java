@@ -5,6 +5,7 @@ import com.schedy.dto.request.InviteAdminRequest;
 import com.schedy.dto.request.UpdateProfileRequest;
 import com.schedy.dto.response.AdminUserResponse;
 import com.schedy.dto.response.UserProfileResponse;
+import com.schedy.dto.response.UserSessionResponse;
 import com.schedy.service.AuthService;
 import com.schedy.service.R2StorageService;
 import com.schedy.service.TotpService;
@@ -91,6 +92,42 @@ public class UserController {
     @DeleteMapping("/profile/photo")
     public ResponseEntity<UserProfileResponse> deletePhoto() {
         return ResponseEntity.ok(authService.clearPhotoUrl());
+    }
+
+    /**
+     * S18-BE-04 — GET /api/v1/user/sessions
+     * Returns all active refresh-token sessions for the authenticated user,
+     * most-recently-used first. The row whose token hash matches the presented
+     * {@code refreshToken} cookie is flagged {@code isCurrent=true} so the UI
+     * can disable self-revoke on the current device.
+     */
+    @GetMapping("/sessions")
+    public ResponseEntity<List<UserSessionResponse>> listSessions(
+            @CookieValue(name = "refreshToken", required = false) String refreshToken) {
+        return ResponseEntity.ok(authService.listCurrentUserSessions(refreshToken));
+    }
+
+    /**
+     * S18-BE-04 — DELETE /api/v1/user/sessions/{id}
+     * Revokes a single session. 404 if the session id does not exist, 403 if
+     * it belongs to another user.
+     */
+    @DeleteMapping("/sessions/{id}")
+    public ResponseEntity<Void> revokeSession(@PathVariable Long id) {
+        authService.revokeSession(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * S18-BE-04 — DELETE /api/v1/user/sessions
+     * Revokes every session EXCEPT the current one (identified by the
+     * {@code refreshToken} cookie). Returns the count of revoked sessions.
+     */
+    @DeleteMapping("/sessions")
+    public ResponseEntity<Map<String, Integer>> revokeAllOtherSessions(
+            @CookieValue(name = "refreshToken", required = false) String refreshToken) {
+        int revoked = authService.revokeAllOtherSessions(refreshToken);
+        return ResponseEntity.ok(Map.of("revoked", revoked));
     }
 
     /**
